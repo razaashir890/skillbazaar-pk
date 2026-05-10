@@ -1,12 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Eye, EyeOff, Sparkles, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/contexts/auth-context'
 import {
   Dialog,
   DialogContent,
@@ -57,6 +59,8 @@ export function SignupModal({
   onOpenChange,
   onSwitchToLogin,
 }: SignupModalProps) {
+  const { user } = useAuth()
+  const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
   const [selectedRole, setSelectedRole] = useState<'freelancer' | 'client' | 'both'>('freelancer')
   const [skillsInput, setSkillsInput] = useState('')
@@ -76,6 +80,15 @@ export function SignupModal({
       password: '',
     },
   })
+
+  // Redirect to dashboard when user is authenticated and modal is open
+  useEffect(() => {
+    if (user && open) {
+      toast.success('Account created! Welcome to SkillBazaar PK!')
+      onOpenChange(false)
+      router.push('/dashboard')
+    }
+  }, [user, open, onOpenChange, router])
 
   const onSubmit = async (data: SignupFormData) => {
     setIsLoading(true)
@@ -97,8 +110,7 @@ export function SignupModal({
         return
       }
 
-      toast.success('Account created! Please check your email to verify your account')
-      onOpenChange(false)
+      // Redirect is handled by the useEffect above
       form.reset()
       setSkillsInput('')
       setGeneratedProfile(null)

@@ -1,12 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Mail, Phone, Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/contexts/auth-context'
 import {
   Dialog,
   DialogContent,
@@ -47,6 +49,8 @@ interface LoginModalProps {
 }
 
 export function LoginModal({ open, onOpenChange, onSwitchToSignup }: LoginModalProps) {
+  const { user } = useAuth()
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState('email')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -68,6 +72,15 @@ export function LoginModal({ open, onOpenChange, onSwitchToSignup }: LoginModalP
     defaultValues: { email: '' },
   })
 
+  // Redirect to dashboard when user is authenticated and modal is open
+  useEffect(() => {
+    if (user && open) {
+      toast.success('Welcome back to SkillBazaar PK!')
+      onOpenChange(false)
+      router.push('/dashboard')
+    }
+  }, [user, open, onOpenChange, router])
+
   const onEmailSubmit = async (data: EmailLoginFormData) => {
     setIsLoading(true)
     try {
@@ -81,8 +94,7 @@ export function LoginModal({ open, onOpenChange, onSwitchToSignup }: LoginModalP
         return
       }
 
-      toast.success('Welcome back to SkillBazaar PK!')
-      onOpenChange(false)
+      // Redirect is handled by the useEffect above
       emailForm.reset()
     } catch {
       toast.error('Something went wrong. Please try again.')
