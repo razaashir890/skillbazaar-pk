@@ -1,65 +1,28 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { motion, AnimatePresence } from 'framer-motion'
+import Link from 'next/link'
+import { motion } from 'framer-motion'
 import {
-  LayoutDashboard,
-  Briefcase,
-  ShoppingCart,
-  MessageSquare,
   Wallet,
-  User,
-  Settings,
-  Search,
-  Bell,
-  Plus,
+  Briefcase,
+  MessageSquare,
+  Star,
   TrendingUp,
   TrendingDown,
-  Star,
   Clock,
-  LogOut,
-  Menu,
-  X,
-  ChevronRight,
-  Sparkles,
+  Plus,
   Eye,
   BookOpen,
   ArrowUpRight,
+  ChevronRight,
 } from 'lucide-react'
-import { toast } from 'sonner'
 import { useAuth } from '@/contexts/auth-context'
+import { getUserName, getUserInitial, getGreeting } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import {
-  Sheet,
-  SheetContent,
-  SheetTrigger,
-  SheetTitle,
-} from '@/components/ui/sheet'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-
-const sidebarItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', href: '#', active: true },
-  { icon: Briefcase, label: 'My Gigs', href: '#gigs' },
-  { icon: ShoppingCart, label: 'Orders', href: '#orders' },
-  { icon: MessageSquare, label: 'Messages', href: '#messages' },
-  { icon: Wallet, label: 'Wallet', href: '#wallet' },
-  { icon: User, label: 'Profile', href: '#profile' },
-  { icon: Settings, label: 'Settings', href: '#settings' },
-]
 
 const statCards = [
   {
@@ -69,6 +32,7 @@ const statCards = [
     trendUp: true,
     icon: Wallet,
     color: 'emerald',
+    href: '/dashboard/wallet',
   },
   {
     label: 'Active Gigs',
@@ -77,6 +41,7 @@ const statCards = [
     trendUp: true,
     icon: Briefcase,
     color: 'emerald',
+    href: '/dashboard/gigs',
   },
   {
     label: 'New Messages',
@@ -85,6 +50,7 @@ const statCards = [
     trendUp: false,
     icon: MessageSquare,
     color: 'amber',
+    href: '/dashboard/messages',
   },
   {
     label: 'Average Rating',
@@ -93,90 +59,28 @@ const statCards = [
     trendUp: true,
     icon: Star,
     color: 'emerald',
+    href: '/dashboard/profile',
   },
 ]
 
 const quickActions = [
-  {
-    label: 'Create Gig',
-    icon: Plus,
-    href: '#create-gig',
-    description: 'Post a new service',
-  },
-  {
-    label: 'Browse Gigs',
-    icon: Eye,
-    href: '#browse',
-    description: 'Find services',
-  },
-  {
-    label: 'Find Work',
-    icon: Briefcase,
-    href: '#find-work',
-    description: 'Browse projects',
-  },
-  {
-    label: 'Skill Academy',
-    icon: BookOpen,
-    href: '#academy',
-    description: 'Learn and grow',
-  },
+  { label: 'Create Gig', icon: Plus, href: '/dashboard/gigs?action=create', description: 'Post a new service' },
+  { label: 'Browse Gigs', icon: Eye, href: '/dashboard/browse', description: 'Find services' },
+  { label: 'Find Work', icon: Briefcase, href: '/dashboard/browse', description: 'Browse projects' },
+  { label: 'Skill Academy', icon: BookOpen, href: '/dashboard/academy', description: 'Learn and grow' },
 ]
 
 const recentActivities = [
-  {
-    id: 1,
-    user: 'AH',
-    description: 'Ahmed Hassan placed a new order for "WordPress Website"',
-    time: '2 minutes ago',
-    color: 'bg-emerald-600',
-  },
-  {
-    id: 2,
-    user: 'SK',
-    description: 'Sara Khan sent you a message about the logo project',
-    time: '15 minutes ago',
-    color: 'bg-amber-500',
-  },
-  {
-    id: 3,
-    user: 'MR',
-    description: 'Payment of PKR 5,000 received for "Logo Design"',
-    time: '1 hour ago',
-    color: 'bg-emerald-600',
-  },
-  {
-    id: 4,
-    user: 'UA',
-    description: 'Usman Ali left a 5-star review on your gig',
-    time: '3 hours ago',
-    color: 'bg-amber-500',
-  },
-  {
-    id: 5,
-    user: 'FK',
-    description: 'Fatima Khan requested a revision on "Banner Design"',
-    time: '5 hours ago',
-    color: 'bg-orange-500',
-  },
+  { id: 1, user: 'AH', description: 'Ahmed Hassan placed a new order for "WordPress Website"', time: '2 minutes ago', color: 'bg-emerald-600' },
+  { id: 2, user: 'SK', description: 'Sara Khan sent you a message about the logo project', time: '15 minutes ago', color: 'bg-amber-500' },
+  { id: 3, user: 'MR', description: 'Payment of PKR 5,000 received for "Logo Design"', time: '1 hour ago', color: 'bg-emerald-600' },
+  { id: 4, user: 'UA', description: 'Usman Ali left a 5-star review on your gig', time: '3 hours ago', color: 'bg-amber-500' },
+  { id: 5, user: 'FK', description: 'Fatima Khan requested a revision on "Banner Design"', time: '5 hours ago', color: 'bg-orange-500' },
 ]
-
-function getUserName(user: { user_metadata?: { full_name?: string; name?: string; email?: string } } | null): string {
-  if (!user) return 'User'
-  const meta = user.user_metadata
-  return meta?.full_name || meta?.name || meta?.email?.split('@')[0] || 'User'
-}
-
-function getUserInitial(name: string): string {
-  return name.charAt(0).toUpperCase()
-}
 
 const containerVariants = {
   hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.08 },
-  },
+  visible: { opacity: 1, transition: { staggerChildren: 0.08 } },
 }
 
 const itemVariants = {
@@ -184,560 +88,241 @@ const itemVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
 }
 
-function SidebarContent({
-  onNavigate,
-}: {
-  onNavigate: (href: string) => void
-}) {
-  const { user, signOut } = useAuth()
-  const router = useRouter()
-  const userName = getUserName(user)
-  const userInitial = getUserInitial(userName)
-
-  const handleSignOut = async () => {
-    await signOut()
-    toast.success('You have been logged out')
-    router.push('/')
-  }
-
-  return (
-    <div className="flex h-full flex-col">
-      {/* Logo */}
-      <div className="flex h-16 items-center gap-2.5 px-6">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white">
-          <Sparkles className="h-5 w-5" />
-        </div>
-        <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
-          SkillBazaar <span className="text-amber-500">PK</span>
-        </span>
-      </div>
-
-      <Separator />
-
-      {/* User info */}
-      <div className="px-4 py-4">
-        <div className="flex items-center gap-3 rounded-xl bg-white/60 dark:bg-gray-800/60 p-3">
-          <Avatar className="h-10 w-10">
-            <AvatarFallback className="bg-emerald-600 text-white font-semibold text-sm">
-              {userInitial}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold truncate">{userName}</p>
-            <p className="text-xs text-muted-foreground truncate">
-              {user?.email || 'Free Plan'}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Nav items */}
-      <ScrollArea className="flex-1 px-3">
-        <nav className="flex flex-col gap-1 pb-4">
-          {sidebarItems.map((item) => (
-            <button
-              key={item.label}
-              onClick={() => onNavigate(item.href)}
-              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
-                item.active
-                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25'
-                  : 'text-muted-foreground hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/50 dark:hover:text-emerald-400'
-              }`}
-            >
-              <item.icon className="h-5 w-5 shrink-0" />
-              <span>{item.label}</span>
-              {item.label === 'Messages' && (
-                <Badge className="ml-auto bg-amber-500 text-white hover:bg-amber-600 text-[10px] px-1.5 py-0">
-                  3
-                </Badge>
-              )}
-            </button>
-          ))}
-        </nav>
-      </ScrollArea>
-
-      <Separator />
-
-      {/* Logout */}
-      <div className="p-3">
-        <button
-          onClick={handleSignOut}
-          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all duration-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/50 dark:hover:text-red-400"
-        >
-          <LogOut className="h-5 w-5 shrink-0" />
-          <span>Logout</span>
-        </button>
-      </div>
-    </div>
-  )
-}
-
 export default function DashboardPage() {
-  const { user, loading } = useAuth()
-  const router = useRouter()
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
-  const [activeSidebarItem, setActiveSidebarItem] = useState('Dashboard')
-
+  const { user } = useAuth()
   const userName = getUserName(user)
   const userInitial = getUserInitial(userName)
-
-  // Redirect if not authenticated
-  if (!loading && !user) {
-    router.push('/')
-    return null
-  }
-
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
-          <p className="text-sm text-muted-foreground">Loading dashboard...</p>
-        </div>
-      </div>
-    )
-  }
-
-  const handleNavigate = (href: string) => {
-    const label = sidebarItems.find((i) => i.href === href)?.label || ''
-    setActiveSidebarItem(label)
-    if (href === '#') return
-    setMobileSidebarOpen(false)
-    toast.info(`${label} section coming soon`)
-  }
-
-  const handleQuickAction = (action: { label: string; href: string }) => {
-    if (action.href === '#') return
-    toast.info(`${action.label} coming soon`)
-  }
+  const greeting = getGreeting()
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-gray-50 via-white to-emerald-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-emerald-950/20">
-      {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex w-72 shrink-0 flex-col border-r border-white/20 dark:border-gray-800/60 bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl">
-        <SidebarContent onNavigate={handleNavigate} />
-      </aside>
+    <motion.div
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+      className="space-y-6"
+    >
+      {/* Welcome Section */}
+      <motion.div variants={itemVariants} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
+            {greeting}, {userName}!
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Here is what is happening with your freelance business today.
+          </p>
+        </div>
+        <Link href="/dashboard/gigs?action=create">
+          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/25 transition-all duration-300 hover:shadow-emerald-600/40 shrink-0">
+            <Plus className="h-4 w-4 mr-2" />
+            Create New Gig
+          </Button>
+        </Link>
+      </motion.div>
 
-      {/* Mobile Sidebar */}
-      <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
-        <SheetContent side="left" className="w-72 p-0">
-          <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
-          <SidebarContent onNavigate={handleNavigate} />
-        </SheetContent>
-      </Sheet>
+      {/* Stat Cards */}
+      <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        {statCards.map((card, index) => (
+          <motion.div
+            key={card.label}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 + index * 0.08 }}
+          >
+            <Link href={card.href} className="block">
+              <div className="group bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border border-white/20 dark:border-gray-700/30 rounded-2xl p-6 shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all duration-300 cursor-pointer">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground font-medium">{card.label}</p>
+                    <p className="text-3xl font-bold mt-1 tracking-tight">{card.value}</p>
+                    <div className={`flex items-center gap-1 mt-2 ${card.trendUp ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                      {card.trendUp ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+                      <span className="text-sm font-medium">{card.trend}</span>
+                    </div>
+                  </div>
+                  <div className={`h-12 w-12 rounded-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110 ${card.color === 'emerald' ? 'bg-emerald-100 dark:bg-emerald-900/50' : 'bg-amber-100 dark:bg-amber-900/50'}`}>
+                    <card.icon className={`h-6 w-6 ${card.color === 'emerald' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`} />
+                  </div>
+                </div>
+              </div>
+            </Link>
+          </motion.div>
+        ))}
+      </motion.div>
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
-        <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b border-white/20 dark:border-gray-800/60 bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl px-4 sm:px-6 lg:px-8">
-          {/* Mobile menu toggle */}
-          <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="lg:hidden">
-                <Menu className="h-5 w-5" />
-                <span className="sr-only">Toggle sidebar</span>
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-72 p-0">
-              <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
-              <SidebarContent onNavigate={handleNavigate} />
-            </SheetContent>
-          </Sheet>
+      {/* Quick Actions */}
+      <motion.div variants={itemVariants}>
+        <h2 className="text-lg font-semibold mb-3">Quick Actions</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {quickActions.map((action, index) => (
+            <motion.div
+              key={action.label}
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 + index * 0.06 }}
+            >
+              <Link href={action.href} className="block">
+                <div className="group flex flex-col items-center gap-2 rounded-2xl border border-white/20 dark:border-gray-700/30 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl p-5 shadow-md hover:shadow-xl transition-all duration-300 hover:scale-[1.03]">
+                  <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-600/20 group-hover:shadow-emerald-600/40 transition-all duration-300 group-hover:scale-110">
+                    <action.icon className="h-5 w-5 text-white" />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm font-semibold">{action.label}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{action.description}</p>
+                  </div>
+                </div>
+              </Link>
+            </motion.div>
+          ))}
+        </div>
+      </motion.div>
 
-          {/* Search */}
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search gigs, orders, messages..."
-              className="pl-10 bg-white/80 dark:bg-gray-800/80 border-white/20 dark:border-gray-700/40 backdrop-blur-sm"
-            />
+      {/* Two column layout: Recent Activity + Profile Summary */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Recent Activity */}
+        <motion.div
+          variants={itemVariants}
+          className="lg:col-span-2 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border border-white/20 dark:border-gray-700/30 rounded-2xl shadow-lg"
+        >
+          <div className="flex items-center justify-between p-6 pb-4">
+            <h2 className="text-lg font-semibold">Recent Activity</h2>
+            <Link href="/dashboard/orders" className="flex items-center gap-1 text-sm text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-medium transition-colors">
+              View all
+              <ChevronRight className="h-4 w-4" />
+            </Link>
           </div>
-
-          <div className="flex items-center gap-2 ml-auto">
-            {/* Notifications */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative">
-                  <Bell className="h-5 w-5" />
-                  <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">
-                    5
-                  </span>
-                  <span className="sr-only">Notifications</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-72">
-                <DropdownMenuLabel>Notifications</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="flex flex-col items-start gap-1 py-3"
-                  onClick={() => toast.info('Notification details coming soon')}
+          <div className="px-6 pb-4"><Separator /></div>
+          <div className="px-6 pb-6">
+            <div className="flex flex-col gap-0">
+              {recentActivities.map((activity, index) => (
+                <motion.div
+                  key={activity.id}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.4 + index * 0.06 }}
+                  className="group flex items-start gap-4 py-4 cursor-pointer"
                 >
-                  <span className="text-sm font-medium">New order received</span>
-                  <span className="text-xs text-muted-foreground">Ahmed placed an order - 2m ago</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="flex flex-col items-start gap-1 py-3"
-                  onClick={() => toast.info('Notification details coming soon')}
-                >
-                  <span className="text-sm font-medium">Payment received</span>
-                  <span className="text-xs text-muted-foreground">PKR 5,000 for Logo Design - 1h ago</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="flex flex-col items-start gap-1 py-3"
-                  onClick={() => toast.info('Notification details coming soon')}
-                >
-                  <span className="text-sm font-medium">New message</span>
-                  <span className="text-xs text-muted-foreground">Sara messaged you - 15m ago</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="justify-center text-emerald-600 dark:text-emerald-400"
-                  onClick={() => toast.info('All notifications coming soon')}
-                >
-                  View all notifications
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            {/* User dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-                  <Avatar className="h-9 w-9">
-                    <AvatarFallback className="bg-emerald-600 text-white font-semibold text-sm">
-                      {userInitial}
+                  <Avatar className="h-10 w-10 shrink-0 mt-0.5">
+                    <AvatarFallback className={`${activity.color} text-white font-semibold text-xs`}>
+                      {activity.user}
                     </AvatarFallback>
                   </Avatar>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>
-                  <div className="flex flex-col gap-1">
-                    <span className="font-semibold">{userName}</span>
-                    <span className="text-xs text-muted-foreground font-normal">
-                      {user?.email}
-                    </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm leading-relaxed">{activity.description}</p>
+                    <div className="flex items-center gap-1 mt-1.5 text-muted-foreground">
+                      <Clock className="h-3.5 w-3.5" />
+                      <span className="text-xs">{activity.time}</span>
+                    </div>
                   </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => handleNavigate('#profile')}>
-                  <User className="mr-2 h-4 w-4" />
-                  Profile
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleNavigate('#settings')}>
-                  <Settings className="mr-2 h-4 w-4" />
-                  Settings
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-red-600 dark:text-red-400"
-                  onClick={async () => {
-                    const { signOut: doSignOut } = await import('@/contexts/auth-context').then(m => m.useAuth ? { signOut: () => Promise.resolve() } : { signOut: () => Promise.resolve() })
-                    void doSignOut()
-                  }}
-                >
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Logout
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  <ArrowUpRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-1" />
+                </motion.div>
+              ))}
+            </div>
           </div>
-        </header>
+        </motion.div>
 
-        {/* Page content */}
-        <ScrollArea className="flex-1">
-          <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-            <AnimatePresence>
-              <motion.div
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                className="space-y-6"
-              >
-                {/* Welcome Section */}
-                <motion.div variants={itemVariants} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div>
-                    <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
-                      Welcome back, {userName}!
-                    </h1>
-                    <p className="text-muted-foreground mt-1">
-                      Here is what is happening with your freelance business today.
-                    </p>
-                  </div>
-                  <Button
-                    onClick={() => toast.info('Create Gig feature coming soon')}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/25 transition-all duration-300 hover:shadow-emerald-600/40 shrink-0"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create New Gig
-                  </Button>
-                </motion.div>
+        {/* Profile Summary */}
+        <motion.div
+          variants={itemVariants}
+          className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border border-white/20 dark:border-gray-700/30 rounded-2xl shadow-lg p-6"
+        >
+          <h2 className="text-lg font-semibold mb-4">Profile Summary</h2>
 
-                {/* Stat Cards */}
-                <motion.div
-                  variants={itemVariants}
-                  className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4"
-                >
-                  {statCards.map((card, index) => (
-                    <motion.div
-                      key={card.label}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.1 + index * 0.08 }}
-                      className="group bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border border-white/20 dark:border-gray-700/30 rounded-2xl p-6 shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all duration-300 cursor-pointer"
-                      onClick={() => toast.info(`${card.label} details coming soon`)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-muted-foreground font-medium">
-                            {card.label}
-                          </p>
-                          <p className="text-3xl font-bold mt-1 tracking-tight">
-                            {card.value}
-                          </p>
-                          <div
-                            className={`flex items-center gap-1 mt-2 ${
-                              card.trendUp
-                                ? 'text-emerald-600 dark:text-emerald-400'
-                                : 'text-amber-600 dark:text-amber-400'
-                            }`}
-                          >
-                            {card.trendUp ? (
-                              <TrendingUp className="h-4 w-4" />
-                            ) : (
-                              <TrendingDown className="h-4 w-4" />
-                            )}
-                            <span className="text-sm font-medium">{card.trend}</span>
-                          </div>
-                        </div>
-                        <div
-                          className={`h-12 w-12 rounded-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110 ${
-                            card.color === 'emerald'
-                              ? 'bg-emerald-100 dark:bg-emerald-900/50'
-                              : 'bg-amber-100 dark:bg-amber-900/50'
-                          }`}
-                        >
-                          <card.icon
-                            className={`h-6 w-6 ${
-                              card.color === 'emerald'
-                                ? 'text-emerald-600 dark:text-emerald-400'
-                                : 'text-amber-600 dark:text-amber-400'
-                            }`}
-                          />
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </motion.div>
+          <div className="flex flex-col items-center mb-5">
+            <Avatar className="h-16 w-16 mb-3">
+              <AvatarFallback className="bg-emerald-600 text-white font-bold text-xl">
+                {userInitial}
+              </AvatarFallback>
+            </Avatar>
+            <h3 className="font-semibold text-base">{userName}</h3>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {user?.user_metadata?.role
+                ? String(user.user_metadata.role).charAt(0).toUpperCase() + String(user.user_metadata.role).slice(1).toLowerCase()
+                : 'Freelancer'}
+            </p>
+            <Badge variant="secondary" className="mt-2 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+              Pro Member
+            </Badge>
+          </div>
 
-                {/* Quick Actions */}
-                <motion.div variants={itemVariants}>
-                  <h2 className="text-lg font-semibold mb-3">Quick Actions</h2>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {quickActions.map((action, index) => (
-                      <motion.button
-                        key={action.label}
-                        initial={{ opacity: 0, y: 15 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.3 + index * 0.06 }}
-                        onClick={() => handleQuickAction(action)}
-                        className="group flex flex-col items-center gap-2 rounded-2xl border border-white/20 dark:border-gray-700/30 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl p-5 shadow-md hover:shadow-xl transition-all duration-300 hover:scale-[1.03]"
-                      >
-                        <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-600/20 group-hover:shadow-emerald-600/40 transition-all duration-300 group-hover:scale-110">
-                          <action.icon className="h-5 w-5 text-white" />
-                        </div>
-                        <div className="text-center">
-                          <p className="text-sm font-semibold">{action.label}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {action.description}
-                          </p>
-                        </div>
-                      </motion.button>
-                    ))}
-                  </div>
-                </motion.div>
+          <Separator className="mb-5" />
 
-                {/* Two column layout: Recent Activity + Profile Summary */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Recent Activity */}
-                  <motion.div
-                    variants={itemVariants}
-                    className="lg:col-span-2 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border border-white/20 dark:border-gray-700/30 rounded-2xl shadow-lg"
-                  >
-                    <div className="flex items-center justify-between p-6 pb-4">
-                      <h2 className="text-lg font-semibold">Recent Activity</h2>
-                      <button
-                        onClick={() => toast.info('Activity log coming soon')}
-                        className="flex items-center gap-1 text-sm text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-medium transition-colors"
-                      >
-                        View all
-                        <ChevronRight className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <div className="px-6 pb-4">
-                      <Separator />
-                    </div>
-                    <div className="px-6 pb-6">
-                      <div className="flex flex-col gap-0">
-                        {recentActivities.map((activity, index) => (
-                          <motion.div
-                            key={activity.id}
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: 0.4 + index * 0.06 }}
-                            className="group flex items-start gap-4 py-4 cursor-pointer"
-                            onClick={() =>
-                              toast.info('Activity details coming soon')
-                            }
-                          >
-                            <Avatar className="h-10 w-10 shrink-0 mt-0.5">
-                              <AvatarFallback
-                                className={`${activity.color} text-white font-semibold text-xs`}
-                              >
-                                {activity.user}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm leading-relaxed">
-                                {activity.description}
-                              </p>
-                              <div className="flex items-center gap-1 mt-1.5 text-muted-foreground">
-                                <Clock className="h-3.5 w-3.5" />
-                                <span className="text-xs">{activity.time}</span>
-                              </div>
-                            </div>
-                            <ArrowUpRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-1" />
-                            {index < recentActivities.length - 1 && (
-                              <div className="absolute bottom-0 left-14 right-6 h-px bg-border" />
-                            )}
-                          </motion.div>
-                        ))}
-                      </div>
-                    </div>
-                  </motion.div>
+          <div className="space-y-4">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">Profile Completeness</span>
+                <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">65%</span>
+              </div>
+              <Progress value={65} className="h-2" />
+            </div>
 
-                  {/* Profile Summary */}
-                  <motion.div
-                    variants={itemVariants}
-                    className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border border-white/20 dark:border-gray-700/30 rounded-2xl shadow-lg p-6"
-                  >
-                    <h2 className="text-lg font-semibold mb-4">Profile Summary</h2>
-
-                    <div className="flex flex-col items-center mb-5">
-                      <Avatar className="h-16 w-16 mb-3">
-                        <AvatarFallback className="bg-emerald-600 text-white font-bold text-xl">
-                          {userInitial}
-                        </AvatarFallback>
-                      </Avatar>
-                      <h3 className="font-semibold text-base">{userName}</h3>
-                      <p className="text-sm text-muted-foreground mt-0.5">
-                        {user?.user_metadata?.role
-                          ? String(user.user_metadata.role).charAt(0).toUpperCase() +
-                            String(user.user_metadata.role).slice(1).toLowerCase()
-                          : 'Freelancer'}
-                      </p>
-                      <Badge
-                        variant="secondary"
-                        className="mt-2 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300"
-                      >
-                        Pro Member
-                      </Badge>
-                    </div>
-
-                    <Separator className="mb-5" />
-
-                    <div className="space-y-4">
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium">Profile Completeness</span>
-                          <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
-                            65%
-                          </span>
-                        </div>
-                        <Progress value={65} className="h-2" />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/50 p-3 text-center">
-                          <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
-                            24
-                          </p>
-                          <p className="text-xs text-muted-foreground">Completed</p>
-                        </div>
-                        <div className="rounded-xl bg-amber-50 dark:bg-amber-950/50 p-3 text-center">
-                          <p className="text-xl font-bold text-amber-600 dark:text-amber-400">
-                            4.9
-                          </p>
-                          <p className="text-xs text-muted-foreground">Avg Rating</p>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2.5 pt-1">
-                        <p className="text-sm font-medium">Complete your profile</p>
-                        <button
-                          onClick={() => toast.info('Profile editing coming soon')}
-                          className="flex items-center gap-2 w-full rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-3 text-sm text-muted-foreground hover:border-emerald-400 hover:text-emerald-600 dark:hover:border-emerald-500 dark:hover:text-emerald-400 transition-colors"
-                        >
-                          <div className="h-2 w-2 rounded-full bg-amber-500" />
-                          Add a profile picture
-                        </button>
-                        <button
-                          onClick={() => toast.info('Profile editing coming soon')}
-                          className="flex items-center gap-2 w-full rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-3 text-sm text-muted-foreground hover:border-emerald-400 hover:text-emerald-600 dark:hover:border-emerald-500 dark:hover:text-emerald-400 transition-colors"
-                        >
-                          <div className="h-2 w-2 rounded-full bg-amber-500" />
-                          Write a bio
-                        </button>
-                        <button
-                          onClick={() => toast.info('Profile editing coming soon')}
-                          className="flex items-center gap-2 w-full rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-3 text-sm text-muted-foreground hover:border-emerald-400 hover:text-emerald-600 dark:hover:border-emerald-500 dark:hover:text-emerald-400 transition-colors"
-                        >
-                          <div className="h-2 w-2 rounded-full bg-amber-500" />
-                          Add your skills
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
+            <div className="grid grid-cols-2 gap-3">
+              <Link href="/dashboard/orders" className="block">
+                <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/50 p-3 text-center hover:bg-emerald-100 dark:hover:bg-emerald-900/70 transition-colors">
+                  <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">24</p>
+                  <p className="text-xs text-muted-foreground">Completed</p>
                 </div>
+              </Link>
+              <Link href="/dashboard/profile" className="block">
+                <div className="rounded-xl bg-amber-50 dark:bg-amber-950/50 p-3 text-center hover:bg-amber-100 dark:hover:bg-amber-900/70 transition-colors">
+                  <p className="text-xl font-bold text-amber-600 dark:text-amber-400">4.9</p>
+                  <p className="text-xs text-muted-foreground">Avg Rating</p>
+                </div>
+              </Link>
+            </div>
 
-                {/* Earnings Overview Chart Placeholder */}
-                <motion.div
-                  variants={itemVariants}
-                  className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border border-white/20 dark:border-gray-700/30 rounded-2xl shadow-lg p-6"
-                >
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold">Earnings Overview</h2>
-                    <Badge variant="secondary" className="text-xs">
-                      Last 30 days
-                    </Badge>
-                  </div>
-                  <div className="flex items-end gap-2 h-40">
-                    {[40, 65, 45, 80, 55, 90, 70, 85, 60, 95, 75, 100].map((height, i) => (
-                      <motion.div
-                        key={i}
-                        className="flex-1 rounded-t-lg bg-gradient-to-t from-emerald-600 to-emerald-400 dark:from-emerald-500 dark:to-emerald-300 min-w-0"
-                        initial={{ height: 0 }}
-                        animate={{ height: `${height}%` }}
-                        transition={{ delay: 0.5 + i * 0.04, duration: 0.5, ease: 'easeOut' }}
-                      />
-                    ))}
-                  </div>
-                  <div className="flex justify-between mt-3 text-xs text-muted-foreground">
-                    <span>Jan</span>
-                    <span>Mar</span>
-                    <span>Jun</span>
-                    <span>Sep</span>
-                    <span>Dec</span>
-                  </div>
-                </motion.div>
-              </motion.div>
-            </AnimatePresence>
-
-            {/* Bottom padding for scroll */}
-            <div className="h-8" />
+            <div className="space-y-2.5 pt-1">
+              <p className="text-sm font-medium">Complete your profile</p>
+              <Link href="/dashboard/profile" className="block">
+                <div className="flex items-center gap-2 w-full rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-3 text-sm text-muted-foreground hover:border-emerald-400 hover:text-emerald-600 dark:hover:border-emerald-500 dark:hover:text-emerald-400 transition-colors">
+                  <div className="h-2 w-2 rounded-full bg-amber-500" />
+                  Add a profile picture
+                </div>
+              </Link>
+              <Link href="/dashboard/profile" className="block">
+                <div className="flex items-center gap-2 w-full rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-3 text-sm text-muted-foreground hover:border-emerald-400 hover:text-emerald-600 dark:hover:border-emerald-500 dark:hover:text-emerald-400 transition-colors">
+                  <div className="h-2 w-2 rounded-full bg-amber-500" />
+                  Write a bio
+                </div>
+              </Link>
+              <Link href="/dashboard/profile" className="block">
+                <div className="flex items-center gap-2 w-full rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-3 text-sm text-muted-foreground hover:border-emerald-400 hover:text-emerald-600 dark:hover:border-emerald-500 dark:hover:text-emerald-400 transition-colors">
+                  <div className="h-2 w-2 rounded-full bg-amber-500" />
+                  Add your skills
+                </div>
+              </Link>
+            </div>
           </div>
-        </ScrollArea>
-      </main>
-    </div>
+        </motion.div>
+      </div>
+
+      {/* Earnings Overview Chart */}
+      <motion.div
+        variants={itemVariants}
+        className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border border-white/20 dark:border-gray-700/30 rounded-2xl shadow-lg p-6"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Earnings Overview</h2>
+          <Badge variant="secondary" className="text-xs">Last 30 days</Badge>
+        </div>
+        <div className="flex items-end gap-2 h-40">
+          {[40, 65, 45, 80, 55, 90, 70, 85, 60, 95, 75, 100].map((height, i) => (
+            <motion.div
+              key={i}
+              className="flex-1 rounded-t-lg bg-gradient-to-t from-emerald-600 to-emerald-400 dark:from-emerald-500 dark:to-emerald-300 min-w-0"
+              initial={{ height: 0 }}
+              animate={{ height: `${height}%` }}
+              transition={{ delay: 0.5 + i * 0.04, duration: 0.5, ease: 'easeOut' }}
+            />
+          ))}
+        </div>
+        <div className="flex justify-between mt-3 text-xs text-muted-foreground">
+          <span>Jan</span>
+          <span>Mar</span>
+          <span>Jun</span>
+          <span>Sep</span>
+          <span>Dec</span>
+        </div>
+      </motion.div>
+    </motion.div>
   )
 }
