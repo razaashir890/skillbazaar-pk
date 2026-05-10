@@ -576,29 +576,44 @@ CREATE TRIGGER update_disputes_updated_at BEFORE UPDATE ON "disputes" FOR EACH R
 -- new user signs up via Supabase Auth (auth.users).
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+SECURITY DEFINER
+SET search_path = public
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    user_role "Role" := 'FREELANCER';
+    user_phone TEXT;
+    user_name TEXT;
+    raw_meta JSONB;
 BEGIN
+    -- Safely extract metadata
+    raw_meta := COALESCE(NEW.raw_user_meta_data, '{}'::JSONB);
+
+    -- Safely extract role (must match enum values exactly)
+    IF raw_meta->>'role' IN ('FREELANCER', 'CLIENT', 'BOTH', 'ADMIN') THEN
+        user_role := (raw_meta->>'role')::"Role";
+    END IF;
+
+    -- Safely extract phone
+    user_phone := COALESCE(raw_meta->>'phone', NULL);
+
+    -- Safely extract name (never NULL — required by profiles table)
+    user_name := COALESCE(
+        raw_meta->>'full_name',
+        raw_meta->>'name',
+        split_part(NEW.email, '@', 1),
+        'User'
+    );
+
     -- Auto-create user row
     INSERT INTO public."users" (id, email, phone, role)
-    VALUES (
-        NEW.id::text,
-        NEW.email,
-        COALESCE(NEW.raw_user_meta_data->>'phone', NEW.phone::text),
-        COALESCE(
-            (NEW.raw_user_meta_data->>'role')::"Role",
-            'FREELANCER'::"Role"
-        )
-    )
+    VALUES (NEW.id::text, NEW.email, user_phone, user_role)
     ON CONFLICT (id) DO NOTHING;
 
     -- Auto-create profile
     INSERT INTO public."profiles" (userId, name, title, bio)
-    VALUES (
-        NEW.id::text,
-        COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
-        NULL,
-        NULL
-    )
+    VALUES (NEW.id::text, user_name, NULL, NULL)
     ON CONFLICT (userId) DO NOTHING;
 
     -- Auto-create wallet
@@ -608,7 +623,7 @@ BEGIN
 
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- Trigger on auth.users
 CREATE TRIGGER on_auth_user_created
@@ -641,6 +656,171 @@ ALTER TABLE "enrollments" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "teams" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "team_members" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "disputes" ENABLE ROW LEVEL SECURITY;
+
+-- ============================================================
+-- 6.0 SERVICE ROLE BYPASS (for triggers and backend operations)
+-- ============================================================
+-- Allow full access to service_role so that database triggers
+-- (like handle_new_user) can insert into RLS-protected tables.
+DO $$ BEGIN
+    CREATE POLICY "service_role_all_users" ON "users"
+        FOR ALL TO service_role
+        USING (true)
+        WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "service_role_all_profiles" ON "profiles"
+        FOR ALL TO service_role
+        USING (true)
+        WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "service_role_all_wallets" ON "wallets"
+        FOR ALL TO service_role
+        USING (true)
+        WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "service_role_all_gigs" ON "gigs"
+        FOR ALL TO service_role
+        USING (true)
+        WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "service_role_all_gig_packages" ON "gig_packages"
+        FOR ALL TO service_role
+        USING (true)
+        WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "service_role_all_orders" ON "orders"
+        FOR ALL TO service_role
+        USING (true)
+        WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "service_role_all_reviews" ON "reviews"
+        FOR ALL TO service_role
+        USING (true)
+        WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "service_role_all_messages" ON "messages"
+        FOR ALL TO service_role
+        USING (true)
+        WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "service_role_all_notifications" ON "notifications"
+        FOR ALL TO service_role
+        USING (true)
+        WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "service_role_all_transactions" ON "transactions"
+        FOR ALL TO service_role
+        USING (true)
+        WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "service_role_all_portfolios" ON "portfolios"
+        FOR ALL TO service_role
+        USING (true)
+        WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "service_role_all_courses" ON "courses"
+        FOR ALL TO service_role
+        USING (true)
+        WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "service_role_all_lessons" ON "lessons"
+        FOR ALL TO service_role
+        USING (true)
+        WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "service_role_all_enrollments" ON "enrollments"
+        FOR ALL TO service_role
+        USING (true)
+        WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "service_role_all_teams" ON "teams"
+        FOR ALL TO service_role
+        USING (true)
+        WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "service_role_all_team_members" ON "team_members"
+        FOR ALL TO service_role
+        USING (true)
+        WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "service_role_all_disputes" ON "disputes"
+        FOR ALL TO service_role
+        USING (true)
+        WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "service_role_all_categories" ON "categories"
+        FOR ALL TO service_role
+        USING (true)
+        WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "service_role_all_skills" ON "skills"
+        FOR ALL TO service_role
+        USING (true)
+        WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "service_role_all_user_skills" ON "user_skills"
+        FOR ALL TO service_role
+        USING (true)
+        WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
 -- 6.1 Users RLS Policies
