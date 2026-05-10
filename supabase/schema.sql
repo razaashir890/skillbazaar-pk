@@ -3,10 +3,48 @@
 -- Supabase PostgreSQL Schema with Row Level Security (RLS)
 -- ============================================================
 -- This schema is the PostgreSQL/Supabase equivalent of the
--- Prisma schema. All IDs use TEXT type (cuid) to match the
+-- Prisma schema. All IDs use TEXT type to match the
 -- Prisma SQLite schema. JSON-like fields use JSONB.
 -- RLS policies are applied to ALL tables.
+-- Compatible with Supabase Auth (auth.users).
 -- ============================================================
+
+-- ============================================================
+-- 0. CLEANUP (safe re-run support)
+-- ============================================================
+
+-- Drop all existing RLS policies on public schema tables (to allow re-running)
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN (SELECT policyname, tablename FROM pg_policies WHERE schemaname = 'public') LOOP
+        EXECUTE format('DROP POLICY %I ON %I', r.policyname, r.tablename);
+    END LOOP;
+END $$;
+
+-- Drop existing triggers (to allow re-running)
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP TRIGGER IF EXISTS update_users_updated_at ON "users";
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON "profiles";
+DROP TRIGGER IF EXISTS update_categories_updated_at ON "categories";
+DROP TRIGGER IF EXISTS update_gigs_updated_at ON "gigs";
+DROP TRIGGER IF EXISTS update_orders_updated_at ON "orders";
+DROP TRIGGER IF EXISTS update_wallets_updated_at ON "wallets";
+DROP TRIGGER IF EXISTS update_courses_updated_at ON "courses";
+DROP TRIGGER IF EXISTS update_teams_updated_at ON "teams";
+DROP TRIGGER IF EXISTS update_disputes_updated_at ON "disputes";
+
+-- Drop the password column if it exists (migration from old schema)
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'password'
+    ) THEN
+        ALTER TABLE "users" DROP COLUMN "password";
+    END IF;
+END $$;
 
 -- ============================================================
 -- 1. ENUM TYPES
@@ -91,12 +129,13 @@ END $$;
 -- 2. TABLES
 -- ============================================================
 
--- 2.1 Users
+-- 2.1 Users (linked to Supabase Auth via auth.users)
+-- Password is managed by Supabase Auth in auth.users table.
+-- Row is auto-created by the handle_new_user() trigger on auth.users.
 CREATE TABLE IF NOT EXISTS "users" (
-    "id" TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    "id" TEXT PRIMARY KEY,
     "email" TEXT NOT NULL UNIQUE,
     "phone" TEXT UNIQUE,
-    "password" TEXT NOT NULL,
     "role" "Role" NOT NULL DEFAULT 'FREELANCER',
     "avatar" TEXT,
     "isVerified" BOOLEAN NOT NULL DEFAULT false,
@@ -531,7 +570,54 @@ CREATE TRIGGER update_teams_updated_at BEFORE UPDATE ON "teams" FOR EACH ROW EXE
 CREATE TRIGGER update_disputes_updated_at BEFORE UPDATE ON "disputes" FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================================
--- 5. ROW LEVEL SECURITY (RLS)
+-- 5. SUPABASE AUTH TRIGGER
+-- ============================================================
+-- Auto-creates rows in users, profiles, and wallets when a
+-- new user signs up via Supabase Auth (auth.users).
+
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Auto-create user row
+    INSERT INTO public."users" (id, email, phone, role)
+    VALUES (
+        NEW.id::text,
+        NEW.email,
+        COALESCE(NEW.raw_user_meta_data->>'phone', NEW.phone::text),
+        COALESCE(
+            (NEW.raw_user_meta_data->>'role')::"Role",
+            'FREELANCER'::"Role"
+        )
+    )
+    ON CONFLICT (id) DO NOTHING;
+
+    -- Auto-create profile
+    INSERT INTO public."profiles" (userId, name, title, bio)
+    VALUES (
+        NEW.id::text,
+        COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
+        NULL,
+        NULL
+    )
+    ON CONFLICT (userId) DO NOTHING;
+
+    -- Auto-create wallet
+    INSERT INTO public."wallets" (userId)
+    VALUES (NEW.id::text)
+    ON CONFLICT (userId) DO NOTHING;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger on auth.users
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW
+    EXECUTE FUNCTION public.handle_new_user();
+
+-- ============================================================
+-- 6. ROW LEVEL SECURITY (RLS)
 -- ============================================================
 
 -- Enable RLS on ALL tables
@@ -557,519 +643,732 @@ ALTER TABLE "team_members" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "disputes" ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================
--- 5.1 Users RLS Policies
+-- 6.1 Users RLS Policies
 -- ============================================================
 -- Anyone can see basic public user info (id, role, avatar, isOnline)
-CREATE POLICY "anon_select_public_users" ON "users"
-    FOR SELECT TO anon, authenticated
-    USING (true);
+DO $$ BEGIN
+    CREATE POLICY "anon_select_public_users" ON "users"
+        FOR SELECT TO anon, authenticated
+        USING (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Users can insert their own record (handled by signup, typically via service role)
-CREATE POLICY "authenticated_insert_own_user" ON "users"
-    FOR INSERT TO authenticated
-    WITH CHECK (auth.uid()::text = "id");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_insert_own_user" ON "users"
+        FOR INSERT TO authenticated
+        WITH CHECK (auth.uid()::text = "id");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Users can update their own profile
-CREATE POLICY "authenticated_update_own_user" ON "users"
-    FOR UPDATE TO authenticated
-    USING (auth.uid()::text = "id")
-    WITH CHECK (auth.uid()::text = "id");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_update_own_user" ON "users"
+        FOR UPDATE TO authenticated
+        USING (auth.uid()::text = "id")
+        WITH CHECK (auth.uid()::text = "id");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
--- 5.2 Profiles RLS Policies
+-- 6.2 Profiles RLS Policies
 -- ============================================================
 -- Public read access to profiles
-CREATE POLICY "anon_select_public_profiles" ON "profiles"
-    FOR SELECT TO anon, authenticated
-    USING (true);
+DO $$ BEGIN
+    CREATE POLICY "anon_select_public_profiles" ON "profiles"
+        FOR SELECT TO anon, authenticated
+        USING (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Authenticated users can insert their own profile
-CREATE POLICY "authenticated_insert_own_profile" ON "profiles"
-    FOR INSERT TO authenticated
-    WITH CHECK (auth.uid()::text = "userId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_insert_own_profile" ON "profiles"
+        FOR INSERT TO authenticated
+        WITH CHECK (auth.uid()::text = "userId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Authenticated users can update their own profile
-CREATE POLICY "authenticated_update_own_profile" ON "profiles"
-    FOR UPDATE TO authenticated
-    USING (auth.uid()::text = "userId")
-    WITH CHECK (auth.uid()::text = "userId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_update_own_profile" ON "profiles"
+        FOR UPDATE TO authenticated
+        USING (auth.uid()::text = "userId")
+        WITH CHECK (auth.uid()::text = "userId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Authenticated users can delete their own profile
-CREATE POLICY "authenticated_delete_own_profile" ON "profiles"
-    FOR DELETE TO authenticated
-    USING (auth.uid()::text = "userId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_delete_own_profile" ON "profiles"
+        FOR DELETE TO authenticated
+        USING (auth.uid()::text = "userId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
--- 5.3 Categories RLS Policies
+-- 6.3 Categories RLS Policies
 -- ============================================================
 -- Public read access
-CREATE POLICY "anon_select_all_categories" ON "categories"
-    FOR SELECT TO anon, authenticated
-    USING (true);
+DO $$ BEGIN
+    CREATE POLICY "anon_select_all_categories" ON "categories"
+        FOR SELECT TO anon, authenticated
+        USING (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
--- 5.4 Skills RLS Policies
+-- 6.4 Skills RLS Policies
 -- ============================================================
 -- Public read access
-CREATE POLICY "anon_select_all_skills" ON "skills"
-    FOR SELECT TO anon, authenticated
-    USING (true);
+DO $$ BEGIN
+    CREATE POLICY "anon_select_all_skills" ON "skills"
+        FOR SELECT TO anon, authenticated
+        USING (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
--- 5.5 User Skills RLS Policies
+-- 6.5 User Skills RLS Policies
 -- ============================================================
 -- Public read access
-CREATE POLICY "anon_select_public_user_skills" ON "user_skills"
-    FOR SELECT TO anon, authenticated
-    USING (true);
+DO $$ BEGIN
+    CREATE POLICY "anon_select_public_user_skills" ON "user_skills"
+        FOR SELECT TO anon, authenticated
+        USING (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Authenticated users can insert their own skills
-CREATE POLICY "authenticated_insert_own_user_skills" ON "user_skills"
-    FOR INSERT TO authenticated
-    WITH CHECK (auth.uid()::text = "userId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_insert_own_user_skills" ON "user_skills"
+        FOR INSERT TO authenticated
+        WITH CHECK (auth.uid()::text = "userId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Authenticated users can update their own skills
-CREATE POLICY "authenticated_update_own_user_skills" ON "user_skills"
-    FOR UPDATE TO authenticated
-    USING (auth.uid()::text = "userId")
-    WITH CHECK (auth.uid()::text = "userId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_update_own_user_skills" ON "user_skills"
+        FOR UPDATE TO authenticated
+        USING (auth.uid()::text = "userId")
+        WITH CHECK (auth.uid()::text = "userId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Authenticated users can delete their own skills
-CREATE POLICY "authenticated_delete_own_user_skills" ON "user_skills"
-    FOR DELETE TO authenticated
-    USING (auth.uid()::text = "userId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_delete_own_user_skills" ON "user_skills"
+        FOR DELETE TO authenticated
+        USING (auth.uid()::text = "userId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
--- 5.6 Gigs RLS Policies
+-- 6.6 Gigs RLS Policies
 -- ============================================================
 -- Public read for ACTIVE gigs
-CREATE POLICY "anon_select_active_gigs" ON "gigs"
-    FOR SELECT TO anon, authenticated
-    USING ("status" = 'ACTIVE');
+DO $$ BEGIN
+    CREATE POLICY "anon_select_active_gigs" ON "gigs"
+        FOR SELECT TO anon, authenticated
+        USING ("status" = 'ACTIVE');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Freelancer can read all their own gigs (any status)
-CREATE POLICY "authenticated_select_own_gigs" ON "gigs"
-    FOR SELECT TO authenticated
-    USING (auth.uid()::text = "freelancerId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_select_own_gigs" ON "gigs"
+        FOR SELECT TO authenticated
+        USING (auth.uid()::text = "freelancerId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Freelancer can create their own gigs
-CREATE POLICY "authenticated_insert_own_gigs" ON "gigs"
-    FOR INSERT TO authenticated
-    WITH CHECK (auth.uid()::text = "freelancerId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_insert_own_gigs" ON "gigs"
+        FOR INSERT TO authenticated
+        WITH CHECK (auth.uid()::text = "freelancerId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Freelancer can update their own gigs
-CREATE POLICY "authenticated_update_own_gigs" ON "gigs"
-    FOR UPDATE TO authenticated
-    USING (auth.uid()::text = "freelancerId")
-    WITH CHECK (auth.uid()::text = "freelancerId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_update_own_gigs" ON "gigs"
+        FOR UPDATE TO authenticated
+        USING (auth.uid()::text = "freelancerId")
+        WITH CHECK (auth.uid()::text = "freelancerId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Freelancer can delete their own gigs
-CREATE POLICY "authenticated_delete_own_gigs" ON "gigs"
-    FOR DELETE TO authenticated
-    USING (auth.uid()::text = "freelancerId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_delete_own_gigs" ON "gigs"
+        FOR DELETE TO authenticated
+        USING (auth.uid()::text = "freelancerId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
--- 5.7 Gig Packages RLS Policies
+-- 6.7 Gig Packages RLS Policies
 -- ============================================================
 -- Public read for packages of ACTIVE gigs
-CREATE POLICY "anon_select_active_gig_packages" ON "gig_packages"
-    FOR SELECT TO anon, authenticated
-    USING (
-        EXISTS (SELECT 1 FROM "gigs" WHERE "gigs"."id" = "gig_packages"."gigId" AND "gigs"."status" = 'ACTIVE')
-    );
+DO $$ BEGIN
+    CREATE POLICY "anon_select_active_gig_packages" ON "gig_packages"
+        FOR SELECT TO anon, authenticated
+        USING (
+            EXISTS (SELECT 1 FROM "gigs" WHERE "gigs"."id" = "gig_packages"."gigId" AND "gigs"."status" = 'ACTIVE')
+        );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Freelancer can read packages of their own gigs
-CREATE POLICY "authenticated_select_own_gig_packages" ON "gig_packages"
-    FOR SELECT TO authenticated
-    USING (
-        EXISTS (SELECT 1 FROM "gigs" WHERE "gigs"."id" = "gig_packages"."gigId" AND "gigs"."freelancerId" = auth.uid()::text)
-    );
+DO $$ BEGIN
+    CREATE POLICY "authenticated_select_own_gig_packages" ON "gig_packages"
+        FOR SELECT TO authenticated
+        USING (
+            EXISTS (SELECT 1 FROM "gigs" WHERE "gigs"."id" = "gig_packages"."gigId" AND "gigs"."freelancerId" = auth.uid()::text)
+        );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Freelancer can create packages for their own gigs
-CREATE POLICY "authenticated_insert_own_gig_packages" ON "gig_packages"
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (SELECT 1 FROM "gigs" WHERE "gigs"."id" = "gig_packages"."gigId" AND "gigs"."freelancerId" = auth.uid()::text)
-    );
+DO $$ BEGIN
+    CREATE POLICY "authenticated_insert_own_gig_packages" ON "gig_packages"
+        FOR INSERT TO authenticated
+        WITH CHECK (
+            EXISTS (SELECT 1 FROM "gigs" WHERE "gigs"."id" = "gig_packages"."gigId" AND "gigs"."freelancerId" = auth.uid()::text)
+        );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Freelancer can update packages of their own gigs
-CREATE POLICY "authenticated_update_own_gig_packages" ON "gig_packages"
-    FOR UPDATE TO authenticated
-    USING (
-        EXISTS (SELECT 1 FROM "gigs" WHERE "gigs"."id" = "gig_packages"."gigId" AND "gigs"."freelancerId" = auth.uid()::text)
-    )
-    WITH CHECK (
-        EXISTS (SELECT 1 FROM "gigs" WHERE "gigs"."id" = "gig_packages"."gigId" AND "gigs"."freelancerId" = auth.uid()::text)
-    );
+DO $$ BEGIN
+    CREATE POLICY "authenticated_update_own_gig_packages" ON "gig_packages"
+        FOR UPDATE TO authenticated
+        USING (
+            EXISTS (SELECT 1 FROM "gigs" WHERE "gigs"."id" = "gig_packages"."gigId" AND "gigs"."freelancerId" = auth.uid()::text)
+        )
+        WITH CHECK (
+            EXISTS (SELECT 1 FROM "gigs" WHERE "gigs"."id" = "gig_packages"."gigId" AND "gigs"."freelancerId" = auth.uid()::text)
+        );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Freelancer can delete packages of their own gigs
-CREATE POLICY "authenticated_delete_own_gig_packages" ON "gig_packages"
-    FOR DELETE TO authenticated
-    USING (
-        EXISTS (SELECT 1 FROM "gigs" WHERE "gigs"."id" = "gig_packages"."gigId" AND "gigs"."freelancerId" = auth.uid()::text)
-    );
+DO $$ BEGIN
+    CREATE POLICY "authenticated_delete_own_gig_packages" ON "gig_packages"
+        FOR DELETE TO authenticated
+        USING (
+            EXISTS (SELECT 1 FROM "gigs" WHERE "gigs"."id" = "gig_packages"."gigId" AND "gigs"."freelancerId" = auth.uid()::text)
+        );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
--- 5.8 Orders RLS Policies
+-- 6.8 Orders RLS Policies
 -- ============================================================
 -- Both client and freelancer can read their orders
-CREATE POLICY "authenticated_select_own_orders" ON "orders"
-    FOR SELECT TO authenticated
-    USING (auth.uid()::text = "clientId" OR auth.uid()::text = "freelancerId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_select_own_orders" ON "orders"
+        FOR SELECT TO authenticated
+        USING (auth.uid()::text = "clientId" OR auth.uid()::text = "freelancerId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Client can create orders
-CREATE POLICY "authenticated_insert_own_orders" ON "orders"
-    FOR INSERT TO authenticated
-    WITH CHECK (auth.uid()::text = "clientId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_insert_own_orders" ON "orders"
+        FOR INSERT TO authenticated
+        WITH CHECK (auth.uid()::text = "clientId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Both parties can update orders
-CREATE POLICY "authenticated_update_own_orders" ON "orders"
-    FOR UPDATE TO authenticated
-    USING (auth.uid()::text = "clientId" OR auth.uid()::text = "freelancerId")
-    WITH CHECK (auth.uid()::text = "clientId" OR auth.uid()::text = "freelancerId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_update_own_orders" ON "orders"
+        FOR UPDATE TO authenticated
+        USING (auth.uid()::text = "clientId" OR auth.uid()::text = "freelancerId")
+        WITH CHECK (auth.uid()::text = "clientId" OR auth.uid()::text = "freelancerId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
--- 5.9 Reviews RLS Policies
+-- 6.9 Reviews RLS Policies
 -- ============================================================
 -- Public read access to reviews
-CREATE POLICY "anon_select_public_reviews" ON "reviews"
-    FOR SELECT TO anon, authenticated
-    USING (true);
+DO $$ BEGIN
+    CREATE POLICY "anon_select_public_reviews" ON "reviews"
+        FOR SELECT TO anon, authenticated
+        USING (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Reviewer can create reviews
-CREATE POLICY "authenticated_insert_own_reviews" ON "reviews"
-    FOR INSERT TO authenticated
-    WITH CHECK (auth.uid()::text = "reviewerId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_insert_own_reviews" ON "reviews"
+        FOR INSERT TO authenticated
+        WITH CHECK (auth.uid()::text = "reviewerId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Reviewer can update their own review
-CREATE POLICY "authenticated_update_own_reviews" ON "reviews"
-    FOR UPDATE TO authenticated
-    USING (auth.uid()::text = "reviewerId")
-    WITH CHECK (auth.uid()::text = "reviewerId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_update_own_reviews" ON "reviews"
+        FOR UPDATE TO authenticated
+        USING (auth.uid()::text = "reviewerId")
+        WITH CHECK (auth.uid()::text = "reviewerId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Reviewer can delete their own review
-CREATE POLICY "authenticated_delete_own_reviews" ON "reviews"
-    FOR DELETE TO authenticated
-    USING (auth.uid()::text = "reviewerId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_delete_own_reviews" ON "reviews"
+        FOR DELETE TO authenticated
+        USING (auth.uid()::text = "reviewerId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
--- 5.10 Messages RLS Policies
+-- 6.10 Messages RLS Policies
 -- ============================================================
 -- Both sender and receiver can read messages in their conversations
-CREATE POLICY "authenticated_select_own_messages" ON "messages"
-    FOR SELECT TO authenticated
-    USING (auth.uid()::text = "senderId" OR auth.uid()::text = "receiverId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_select_own_messages" ON "messages"
+        FOR SELECT TO authenticated
+        USING (auth.uid()::text = "senderId" OR auth.uid()::text = "receiverId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Sender can insert messages
-CREATE POLICY "authenticated_insert_own_messages" ON "messages"
-    FOR INSERT TO authenticated
-    WITH CHECK (auth.uid()::text = "senderId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_insert_own_messages" ON "messages"
+        FOR INSERT TO authenticated
+        WITH CHECK (auth.uid()::text = "senderId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Receiver can mark messages as read
-CREATE POLICY "authenticated_update_own_messages" ON "messages"
-    FOR UPDATE TO authenticated
-    USING (auth.uid()::text = "receiverId")
-    WITH CHECK (auth.uid()::text = "receiverId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_update_own_messages" ON "messages"
+        FOR UPDATE TO authenticated
+        USING (auth.uid()::text = "receiverId")
+        WITH CHECK (auth.uid()::text = "receiverId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
--- 5.11 Notifications RLS Policies
+-- 6.11 Notifications RLS Policies
 -- ============================================================
 -- User can only read their own notifications
-CREATE POLICY "authenticated_select_own_notifications" ON "notifications"
-    FOR SELECT TO authenticated
-    USING (auth.uid()::text = "userId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_select_own_notifications" ON "notifications"
+        FOR SELECT TO authenticated
+        USING (auth.uid()::text = "userId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- System can insert notifications (service role, or allow authenticated for self-notifications)
-CREATE POLICY "authenticated_insert_own_notifications" ON "notifications"
-    FOR INSERT TO authenticated
-    WITH CHECK (auth.uid()::text = "userId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_insert_own_notifications" ON "notifications"
+        FOR INSERT TO authenticated
+        WITH CHECK (auth.uid()::text = "userId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- User can update their own notifications (mark as read)
-CREATE POLICY "authenticated_update_own_notifications" ON "notifications"
-    FOR UPDATE TO authenticated
-    USING (auth.uid()::text = "userId")
-    WITH CHECK (auth.uid()::text = "userId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_update_own_notifications" ON "notifications"
+        FOR UPDATE TO authenticated
+        USING (auth.uid()::text = "userId")
+        WITH CHECK (auth.uid()::text = "userId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- User can delete their own notifications
-CREATE POLICY "authenticated_delete_own_notifications" ON "notifications"
-    FOR DELETE TO authenticated
-    USING (auth.uid()::text = "userId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_delete_own_notifications" ON "notifications"
+        FOR DELETE TO authenticated
+        USING (auth.uid()::text = "userId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
--- 5.12 Wallets RLS Policies
+-- 6.12 Wallets RLS Policies
 -- ============================================================
 -- User can only read their own wallet
-CREATE POLICY "authenticated_select_own_wallet" ON "wallets"
-    FOR SELECT TO authenticated
-    USING (auth.uid()::text = "userId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_select_own_wallet" ON "wallets"
+        FOR SELECT TO authenticated
+        USING (auth.uid()::text = "userId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- User can create their own wallet (if not auto-created)
-CREATE POLICY "authenticated_insert_own_wallet" ON "wallets"
-    FOR INSERT TO authenticated
-    WITH CHECK (auth.uid()::text = "userId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_insert_own_wallet" ON "wallets"
+        FOR INSERT TO authenticated
+        WITH CHECK (auth.uid()::text = "userId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- User can update their own wallet
-CREATE POLICY "authenticated_update_own_wallet" ON "wallets"
-    FOR UPDATE TO authenticated
-    USING (auth.uid()::text = "userId")
-    WITH CHECK (auth.uid()::text = "userId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_update_own_wallet" ON "wallets"
+        FOR UPDATE TO authenticated
+        USING (auth.uid()::text = "userId")
+        WITH CHECK (auth.uid()::text = "userId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
--- 5.13 Transactions RLS Policies
+-- 6.13 Transactions RLS Policies
 -- ============================================================
 -- User can only read their own transactions (via wallet ownership)
-CREATE POLICY "authenticated_select_own_transactions" ON "transactions"
-    FOR SELECT TO authenticated
-    USING (
-        EXISTS (SELECT 1 FROM "wallets" WHERE "wallets"."id" = "transactions"."walletId" AND "wallets"."userId" = auth.uid()::text)
-    );
+DO $$ BEGIN
+    CREATE POLICY "authenticated_select_own_transactions" ON "transactions"
+        FOR SELECT TO authenticated
+        USING (
+            EXISTS (SELECT 1 FROM "wallets" WHERE "wallets"."id" = "transactions"."walletId" AND "wallets"."userId" = auth.uid()::text)
+        );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- System/User can create transactions for their own wallet
-CREATE POLICY "authenticated_insert_own_transactions" ON "transactions"
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (SELECT 1 FROM "wallets" WHERE "wallets"."id" = "transactions"."walletId" AND "wallets"."userId" = auth.uid()::text)
-    );
+DO $$ BEGIN
+    CREATE POLICY "authenticated_insert_own_transactions" ON "transactions"
+        FOR INSERT TO authenticated
+        WITH CHECK (
+            EXISTS (SELECT 1 FROM "wallets" WHERE "wallets"."id" = "transactions"."walletId" AND "wallets"."userId" = auth.uid()::text)
+        );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
--- 5.14 Portfolios RLS Policies
+-- 6.14 Portfolios RLS Policies
 -- ============================================================
 -- Public read access
-CREATE POLICY "anon_select_public_portfolios" ON "portfolios"
-    FOR SELECT TO anon, authenticated
-    USING (true);
+DO $$ BEGIN
+    CREATE POLICY "anon_select_public_portfolios" ON "portfolios"
+        FOR SELECT TO anon, authenticated
+        USING (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- User can create their own portfolio
-CREATE POLICY "authenticated_insert_own_portfolio" ON "portfolios"
-    FOR INSERT TO authenticated
-    WITH CHECK (auth.uid()::text = "userId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_insert_own_portfolio" ON "portfolios"
+        FOR INSERT TO authenticated
+        WITH CHECK (auth.uid()::text = "userId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- User can update their own portfolio
-CREATE POLICY "authenticated_update_own_portfolio" ON "portfolios"
-    FOR UPDATE TO authenticated
-    USING (auth.uid()::text = "userId")
-    WITH CHECK (auth.uid()::text = "userId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_update_own_portfolio" ON "portfolios"
+        FOR UPDATE TO authenticated
+        USING (auth.uid()::text = "userId")
+        WITH CHECK (auth.uid()::text = "userId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- User can delete their own portfolio
-CREATE POLICY "authenticated_delete_own_portfolio" ON "portfolios"
-    FOR DELETE TO authenticated
-    USING (auth.uid()::text = "userId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_delete_own_portfolio" ON "portfolios"
+        FOR DELETE TO authenticated
+        USING (auth.uid()::text = "userId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
--- 5.15 Courses RLS Policies
+-- 6.15 Courses RLS Policies
 -- ============================================================
 -- Public read for PUBLISHED courses
-CREATE POLICY "anon_select_published_courses" ON "courses"
-    FOR SELECT TO anon, authenticated
-    USING ("status" = 'PUBLISHED');
+DO $$ BEGIN
+    CREATE POLICY "anon_select_published_courses" ON "courses"
+        FOR SELECT TO anon, authenticated
+        USING ("status" = 'PUBLISHED');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Instructor can read all their own courses (any status)
-CREATE POLICY "authenticated_select_own_courses" ON "courses"
-    FOR SELECT TO authenticated
-    USING (auth.uid()::text = "instructorId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_select_own_courses" ON "courses"
+        FOR SELECT TO authenticated
+        USING (auth.uid()::text = "instructorId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Instructor can create courses
-CREATE POLICY "authenticated_insert_own_courses" ON "courses"
-    FOR INSERT TO authenticated
-    WITH CHECK (auth.uid()::text = "instructorId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_insert_own_courses" ON "courses"
+        FOR INSERT TO authenticated
+        WITH CHECK (auth.uid()::text = "instructorId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Instructor can update their own courses
-CREATE POLICY "authenticated_update_own_courses" ON "courses"
-    FOR UPDATE TO authenticated
-    USING (auth.uid()::text = "instructorId")
-    WITH CHECK (auth.uid()::text = "instructorId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_update_own_courses" ON "courses"
+        FOR UPDATE TO authenticated
+        USING (auth.uid()::text = "instructorId")
+        WITH CHECK (auth.uid()::text = "instructorId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Instructor can delete their own courses
-CREATE POLICY "authenticated_delete_own_courses" ON "courses"
-    FOR DELETE TO authenticated
-    USING (auth.uid()::text = "instructorId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_delete_own_courses" ON "courses"
+        FOR DELETE TO authenticated
+        USING (auth.uid()::text = "instructorId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
--- 5.16 Lessons RLS Policies
+-- 6.16 Lessons RLS Policies
 -- ============================================================
 -- Public read for lessons of PUBLISHED courses
-CREATE POLICY "anon_select_published_lessons" ON "lessons"
-    FOR SELECT TO anon, authenticated
-    USING (
-        EXISTS (SELECT 1 FROM "courses" WHERE "courses"."id" = "lessons"."courseId" AND "courses"."status" = 'PUBLISHED')
-    );
+DO $$ BEGIN
+    CREATE POLICY "anon_select_published_lessons" ON "lessons"
+        FOR SELECT TO anon, authenticated
+        USING (
+            EXISTS (SELECT 1 FROM "courses" WHERE "courses"."id" = "lessons"."courseId" AND "courses"."status" = 'PUBLISHED')
+        );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Instructor can read all lessons of their own courses
-CREATE POLICY "authenticated_select_own_lessons" ON "lessons"
-    FOR SELECT TO authenticated
-    USING (
-        EXISTS (SELECT 1 FROM "courses" WHERE "courses"."id" = "lessons"."courseId" AND "courses"."instructorId" = auth.uid()::text)
-    );
+DO $$ BEGIN
+    CREATE POLICY "authenticated_select_own_lessons" ON "lessons"
+        FOR SELECT TO authenticated
+        USING (
+            EXISTS (SELECT 1 FROM "courses" WHERE "courses"."id" = "lessons"."courseId" AND "courses"."instructorId" = auth.uid()::text)
+        );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Instructor can create lessons for their own courses
-CREATE POLICY "authenticated_insert_own_lessons" ON "lessons"
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (SELECT 1 FROM "courses" WHERE "courses"."id" = "lessons"."courseId" AND "courses"."instructorId" = auth.uid()::text)
-    );
+DO $$ BEGIN
+    CREATE POLICY "authenticated_insert_own_lessons" ON "lessons"
+        FOR INSERT TO authenticated
+        WITH CHECK (
+            EXISTS (SELECT 1 FROM "courses" WHERE "courses"."id" = "lessons"."courseId" AND "courses"."instructorId" = auth.uid()::text)
+        );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Instructor can update lessons of their own courses
-CREATE POLICY "authenticated_update_own_lessons" ON "lessons"
-    FOR UPDATE TO authenticated
-    USING (
-        EXISTS (SELECT 1 FROM "courses" WHERE "courses"."id" = "lessons"."courseId" AND "courses"."instructorId" = auth.uid()::text)
-    )
-    WITH CHECK (
-        EXISTS (SELECT 1 FROM "courses" WHERE "courses"."id" = "lessons"."courseId" AND "courses"."instructorId" = auth.uid()::text)
-    );
+DO $$ BEGIN
+    CREATE POLICY "authenticated_update_own_lessons" ON "lessons"
+        FOR UPDATE TO authenticated
+        USING (
+            EXISTS (SELECT 1 FROM "courses" WHERE "courses"."id" = "lessons"."courseId" AND "courses"."instructorId" = auth.uid()::text)
+        )
+        WITH CHECK (
+            EXISTS (SELECT 1 FROM "courses" WHERE "courses"."id" = "lessons"."courseId" AND "courses"."instructorId" = auth.uid()::text)
+        );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Instructor can delete lessons of their own courses
-CREATE POLICY "authenticated_delete_own_lessons" ON "lessons"
-    FOR DELETE TO authenticated
-    USING (
-        EXISTS (SELECT 1 FROM "courses" WHERE "courses"."id" = "lessons"."courseId" AND "courses"."instructorId" = auth.uid()::text)
-    );
+DO $$ BEGIN
+    CREATE POLICY "authenticated_delete_own_lessons" ON "lessons"
+        FOR DELETE TO authenticated
+        USING (
+            EXISTS (SELECT 1 FROM "courses" WHERE "courses"."id" = "lessons"."courseId" AND "courses"."instructorId" = auth.uid()::text)
+        );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
--- 5.17 Enrollments RLS Policies
+-- 6.17 Enrollments RLS Policies
 -- ============================================================
 -- User can read their own enrollments
-CREATE POLICY "authenticated_select_own_enrollments" ON "enrollments"
-    FOR SELECT TO authenticated
-    USING (auth.uid()::text = "userId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_select_own_enrollments" ON "enrollments"
+        FOR SELECT TO authenticated
+        USING (auth.uid()::text = "userId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Instructor can read enrollments for their courses
-CREATE POLICY "authenticated_select_instructor_enrollments" ON "enrollments"
-    FOR SELECT TO authenticated
-    USING (
-        EXISTS (SELECT 1 FROM "courses" WHERE "courses"."id" = "enrollments"."courseId" AND "courses"."instructorId" = auth.uid()::text)
-    );
+DO $$ BEGIN
+    CREATE POLICY "authenticated_select_instructor_enrollments" ON "enrollments"
+        FOR SELECT TO authenticated
+        USING (
+            EXISTS (SELECT 1 FROM "courses" WHERE "courses"."id" = "enrollments"."courseId" AND "courses"."instructorId" = auth.uid()::text)
+        );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- User can create their own enrollment
-CREATE POLICY "authenticated_insert_own_enrollments" ON "enrollments"
-    FOR INSERT TO authenticated
-    WITH CHECK (auth.uid()::text = "userId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_insert_own_enrollments" ON "enrollments"
+        FOR INSERT TO authenticated
+        WITH CHECK (auth.uid()::text = "userId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- User can update their own enrollment (progress tracking)
-CREATE POLICY "authenticated_update_own_enrollments" ON "enrollments"
-    FOR UPDATE TO authenticated
-    USING (auth.uid()::text = "userId")
-    WITH CHECK (auth.uid()::text = "userId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_update_own_enrollments" ON "enrollments"
+        FOR UPDATE TO authenticated
+        USING (auth.uid()::text = "userId")
+        WITH CHECK (auth.uid()::text = "userId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
--- 5.18 Teams RLS Policies
+-- 6.18 Teams RLS Policies
 -- ============================================================
 -- Team members can read their teams
-CREATE POLICY "authenticated_select_own_teams" ON "teams"
-    FOR SELECT TO authenticated
-    USING (
-        "ownerId" = auth.uid()::text
-        OR EXISTS (SELECT 1 FROM "team_members" WHERE "team_members"."teamId" = "teams"."id" AND "team_members"."userId" = auth.uid()::text)
-    );
+DO $$ BEGIN
+    CREATE POLICY "authenticated_select_own_teams" ON "teams"
+        FOR SELECT TO authenticated
+        USING (
+            "ownerId" = auth.uid()::text
+            OR EXISTS (SELECT 1 FROM "team_members" WHERE "team_members"."teamId" = "teams"."id" AND "team_members"."userId" = auth.uid()::text)
+        );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Owner can create teams
-CREATE POLICY "authenticated_insert_own_teams" ON "teams"
-    FOR INSERT TO authenticated
-    WITH CHECK (auth.uid()::text = "ownerId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_insert_own_teams" ON "teams"
+        FOR INSERT TO authenticated
+        WITH CHECK (auth.uid()::text = "ownerId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Owner can update their teams
-CREATE POLICY "authenticated_update_own_teams" ON "teams"
-    FOR UPDATE TO authenticated
-    USING (auth.uid()::text = "ownerId")
-    WITH CHECK (auth.uid()::text = "ownerId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_update_own_teams" ON "teams"
+        FOR UPDATE TO authenticated
+        USING (auth.uid()::text = "ownerId")
+        WITH CHECK (auth.uid()::text = "ownerId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Owner can delete their teams
-CREATE POLICY "authenticated_delete_own_teams" ON "teams"
-    FOR DELETE TO authenticated
-    USING (auth.uid()::text = "ownerId");
+DO $$ BEGIN
+    CREATE POLICY "authenticated_delete_own_teams" ON "teams"
+        FOR DELETE TO authenticated
+        USING (auth.uid()::text = "ownerId");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
--- 5.19 Team Members RLS Policies
+-- 6.19 Team Members RLS Policies
 -- ============================================================
 -- Team members can see their team's members
-CREATE POLICY "authenticated_select_own_team_members" ON "team_members"
-    FOR SELECT TO authenticated
-    USING (
-        auth.uid()::text = "userId"
-        OR EXISTS (
-            SELECT 1 FROM "teams"
-            WHERE "teams"."id" = "team_members"."teamId"
-            AND (
-                "teams"."ownerId" = auth.uid()::text
-                OR EXISTS (
-                    SELECT 1 FROM "team_members" AS tm
-                    WHERE tm."teamId" = "teams"."id" AND tm."userId" = auth.uid()::text
+DO $$ BEGIN
+    CREATE POLICY "authenticated_select_own_team_members" ON "team_members"
+        FOR SELECT TO authenticated
+        USING (
+            auth.uid()::text = "userId"
+            OR EXISTS (
+                SELECT 1 FROM "teams"
+                WHERE "teams"."id" = "team_members"."teamId"
+                AND (
+                    "teams"."ownerId" = auth.uid()::text
+                    OR EXISTS (
+                        SELECT 1 FROM "team_members" AS tm
+                        WHERE tm."teamId" = "teams"."id" AND tm."userId" = auth.uid()::text
+                    )
                 )
             )
-        )
-    );
+        );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Owner can add team members
-CREATE POLICY "authenticated_insert_team_members" ON "team_members"
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (SELECT 1 FROM "teams" WHERE "teams"."id" = "team_members"."teamId" AND "teams"."ownerId" = auth.uid()::text)
-    );
+DO $$ BEGIN
+    CREATE POLICY "authenticated_insert_team_members" ON "team_members"
+        FOR INSERT TO authenticated
+        WITH CHECK (
+            EXISTS (SELECT 1 FROM "teams" WHERE "teams"."id" = "team_members"."teamId" AND "teams"."ownerId" = auth.uid()::text)
+        );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Owner can update team member roles
-CREATE POLICY "authenticated_update_team_members" ON "team_members"
-    FOR UPDATE TO authenticated
-    USING (
-        EXISTS (SELECT 1 FROM "teams" WHERE "teams"."id" = "team_members"."teamId" AND "teams"."ownerId" = auth.uid()::text)
-    )
-    WITH CHECK (
-        EXISTS (SELECT 1 FROM "teams" WHERE "teams"."id" = "team_members"."teamId" AND "teams"."ownerId" = auth.uid()::text)
-    );
+DO $$ BEGIN
+    CREATE POLICY "authenticated_update_team_members" ON "team_members"
+        FOR UPDATE TO authenticated
+        USING (
+            EXISTS (SELECT 1 FROM "teams" WHERE "teams"."id" = "team_members"."teamId" AND "teams"."ownerId" = auth.uid()::text)
+        )
+        WITH CHECK (
+            EXISTS (SELECT 1 FROM "teams" WHERE "teams"."id" = "team_members"."teamId" AND "teams"."ownerId" = auth.uid()::text)
+        );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Owner can remove team members
-CREATE POLICY "authenticated_delete_team_members" ON "team_members"
-    FOR DELETE TO authenticated
-    USING (
-        EXISTS (SELECT 1 FROM "teams" WHERE "teams"."id" = "team_members"."teamId" AND "teams"."ownerId" = auth.uid()::text)
-        OR auth.uid()::text = "userId"
-    );
+DO $$ BEGIN
+    CREATE POLICY "authenticated_delete_team_members" ON "team_members"
+        FOR DELETE TO authenticated
+        USING (
+            EXISTS (SELECT 1 FROM "teams" WHERE "teams"."id" = "team_members"."teamId" AND "teams"."ownerId" = auth.uid()::text)
+            OR auth.uid()::text = "userId"
+        );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
--- 5.20 Disputes RLS Policies
+-- 6.20 Disputes RLS Policies
 -- ============================================================
 -- Both parties (client and freelancer) can read disputes for their orders
-CREATE POLICY "authenticated_select_own_disputes" ON "disputes"
-    FOR SELECT TO authenticated
-    USING (
-        auth.uid()::text = "raisedBy"
-        OR EXISTS (
-            SELECT 1 FROM "orders"
-            WHERE "orders"."id" = "disputes"."orderId"
-            AND ("orders"."clientId" = auth.uid()::text OR "orders"."freelancerId" = auth.uid()::text)
-        )
-    );
+DO $$ BEGIN
+    CREATE POLICY "authenticated_select_own_disputes" ON "disputes"
+        FOR SELECT TO authenticated
+        USING (
+            auth.uid()::text = "raisedBy"
+            OR EXISTS (
+                SELECT 1 FROM "orders"
+                WHERE "orders"."id" = "disputes"."orderId"
+                AND ("orders"."clientId" = auth.uid()::text OR "orders"."freelancerId" = auth.uid()::text)
+            )
+        );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- User can raise a dispute for orders they're part of
-CREATE POLICY "authenticated_insert_own_disputes" ON "disputes"
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        auth.uid()::text = "raisedBy"
-        AND EXISTS (
-            SELECT 1 FROM "orders"
-            WHERE "orders"."id" = "disputes"."orderId"
-            AND ("orders"."clientId" = auth.uid()::text OR "orders"."freelancerId" = auth.uid()::text)
-        )
-    );
+DO $$ BEGIN
+    CREATE POLICY "authenticated_insert_own_disputes" ON "disputes"
+        FOR INSERT TO authenticated
+        WITH CHECK (
+            auth.uid()::text = "raisedBy"
+            AND EXISTS (
+                SELECT 1 FROM "orders"
+                WHERE "orders"."id" = "disputes"."orderId"
+                AND ("orders"."clientId" = auth.uid()::text OR "orders"."freelancerId" = auth.uid()::text)
+            )
+        );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- Both parties can update disputes they raised or are involved in
-CREATE POLICY "authenticated_update_own_disputes" ON "disputes"
-    FOR UPDATE TO authenticated
-    USING (
-        auth.uid()::text = "raisedBy"
-        OR EXISTS (
-            SELECT 1 FROM "orders"
-            WHERE "orders"."id" = "disputes"."orderId"
-            AND ("orders"."clientId" = auth.uid()::text OR "orders"."freelancerId" = auth.uid()::text)
+DO $$ BEGIN
+    CREATE POLICY "authenticated_update_own_disputes" ON "disputes"
+        FOR UPDATE TO authenticated
+        USING (
+            auth.uid()::text = "raisedBy"
+            OR EXISTS (
+                SELECT 1 FROM "orders"
+                WHERE "orders"."id" = "disputes"."orderId"
+                AND ("orders"."clientId" = auth.uid()::text OR "orders"."freelancerId" = auth.uid()::text)
+            )
         )
-    )
-    WITH CHECK (
-        auth.uid()::text = "raisedBy"
-        OR EXISTS (
-            SELECT 1 FROM "orders"
-            WHERE "orders"."id" = "disputes"."orderId"
-            AND ("orders"."clientId" = auth.uid()::text OR "orders"."freelancerId" = auth.uid()::text)
-        )
-    );
+        WITH CHECK (
+            auth.uid()::text = "raisedBy"
+            OR EXISTS (
+                SELECT 1 FROM "orders"
+                WHERE "orders"."id" = "disputes"."orderId"
+                AND ("orders"."clientId" = auth.uid()::text OR "orders"."freelancerId" = auth.uid()::text)
+            )
+        );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
 -- END OF SCHEMA
