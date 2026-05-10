@@ -1,0 +1,587 @@
+// ============================================================
+// SkillBazaar PK - Pakistan's Freelance Marketplace
+// Prisma Schema (SQLite)
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum Role {
+  FREELANCER
+  CLIENT
+  BOTH
+  ADMIN
+}
+
+enum SkillLevel {
+  BEGINNER
+  INTERMEDIATE
+  EXPERT
+}
+
+enum GigStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  DENIED
+}
+
+enum OrderStatus {
+  PENDING
+  ACCEPTED
+  IN_PROGRESS
+  DELIVERED
+  REVISION
+  COMPLETED
+  CANCELLED
+  DISPUTED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  REFUNDED
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  FILE
+  SYSTEM
+}
+
+enum NotificationType {
+  ORDER
+  MESSAGE
+  PAYMENT
+  SYSTEM
+  PROMOTIONAL
+}
+
+enum TransactionType {
+  CREDIT
+  DEBIT
+  WITHDRAWAL
+  REFUND
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum CourseLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum CourseStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum LessonType {
+  VIDEO
+  TEXT
+  QUIZ
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  DROPPED
+}
+
+enum TeamRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  DISMISSED
+}
+
+// ============================================================
+// MODELS
+// ============================================================
+
+// 1. User
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  phone     String?  @unique
+  password  String
+  role      Role     @default(FREELANCER)
+  avatar    String?
+  isVerified Boolean @default(false)
+  isOnline  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile       Profile?
+  skills        UserSkill[]
+  gigs          Gig[]
+  clientOrders  Order[]    @relation("ClientOrders")
+  freelancerOrders Order[] @relation("FreelancerOrders")
+  sentMessages  Message[]  @relation("SentMessages")
+  receivedMessages Message[] @relation("ReceivedMessages")
+  notifications Notification[]
+  wallet        Wallet?
+  reviewsGiven  Review[]   @relation("ReviewsGiven")
+  reviewsReceived Review[] @relation("ReviewsReceived")
+  portfolio     Portfolio[]
+  courses       Course[]
+  enrollments   Enrollment[]
+  ownedTeams    Team[]     @relation("TeamOwner")
+  teamMemberships TeamMember[]
+  raisedDisputes Dispute[]
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+// 2. Profile
+model Profile {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  name             String
+  title            String?
+  bio              String?
+  city             String?
+  country          String   @default("Pakistan")
+  hourlyRate       Int?
+  rating           Float    @default(0)
+  totalReviews     Int      @default(0)
+  totalEarnings    Float    @default(0)
+  responseTime     String?
+  languages        String?
+  education        String?
+  socialLinks      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("profiles")
+}
+
+// 3. Category (self-referencing)
+model Category {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  description String?
+  icon        String?
+  parentId    String?
+  order       Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  parent      Category?  @relation("SubCategories", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Category[] @relation("SubCategories")
+  skills      Skill[]
+  gigs        Gig[]
+  courses     Course[]
+
+  @@index([slug])
+  @@index([parentId])
+  @@map("categories")
+}
+
+// 4. Skill
+model Skill {
+  id         String   @id @default(cuid())
+  name       String   @unique
+  slug       String   @unique
+  categoryId String?
+  createdAt  DateTime @default(now())
+
+  category   Category?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  userSkills UserSkill[]
+
+  @@index([slug])
+  @@index([categoryId])
+  @@map("skills")
+}
+
+// 5. UserSkill
+model UserSkill {
+  id               String     @id @default(cuid())
+  userId           String
+  skillId          String
+  level            SkillLevel @default(INTERMEDIATE)
+  yearsOfExperience Int       @default(0)
+  createdAt        DateTime   @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, skillId])
+  @@index([userId])
+  @@index([skillId])
+  @@map("user_skills")
+}
+
+// 6. Gig
+model Gig {
+  id            String    @id @default(cuid())
+  title         String
+  slug          String    @unique
+  description   String
+  categoryId    String
+  freelancerId  String
+  price         Float
+  deliveryDays  Int
+  revisions     Int       @default(3)
+  status        GigStatus @default(DRAFT)
+  rating        Float     @default(0)
+  totalReviews  Int       @default(0)
+  totalOrders   Int       @default(0)
+  tags          String?
+  thumbnail     String?
+  images        String?
+  faq           String?
+  requirements  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  category   Category    @relation(fields: [categoryId], references: [id])
+  freelancer User       @relation(fields: [freelancerId], references: [id], onDelete: Cascade)
+  packages   GigPackage[]
+  orders     Order[]
+
+  @@index([categoryId])
+  @@index([freelancerId])
+  @@index([status])
+  @@index([slug])
+  @@map("gigs")
+}
+
+// 7. GigPackage
+model GigPackage {
+  id           String   @id @default(cuid())
+  gigId        String
+  name         String
+  description  String?
+  price        Float
+  deliveryDays Int
+  revisions    Int      @default(1)
+  features     String?
+  isPopular    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  gig    Gig    @relation(fields: [gigId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@index([gigId])
+  @@map("gig_packages")
+}
+
+// 8. Order
+model Order {
+  id            String         @id @default(cuid())
+  orderId       String         @unique @default(cuid())
+  gigId         String
+  clientId      String
+  freelancerId  String
+  packageId     String?
+  status        OrderStatus    @default(PENDING)
+  amount        Float
+  platformFee   Float          @default(0)
+  paymentMethod String?
+  paymentStatus PaymentStatus  @default(PENDING)
+  requirements  String?
+  deliveryNote  String?
+  revisionNote  String?
+  startedAt     DateTime?
+  deliveredAt   DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  gig        Gig          @relation(fields: [gigId], references: [id])
+  client     User         @relation("ClientOrders", fields: [clientId], references: [id])
+  freelancer User         @relation("FreelancerOrders", fields: [freelancerId], references: [id])
+  package    GigPackage?  @relation(fields: [packageId], references: [id])
+  reviews    Review[]
+  disputes   Dispute[]
+  transactions Transaction[]
+
+  @@index([freelancerId])
+  @@index([clientId])
+  @@index([status])
+  @@index([orderId])
+  @@map("orders")
+}
+
+// 9. Review
+model Review {
+  id            String   @id @default(cuid())
+  orderId       String
+  reviewerId    String
+  revieweeId    String
+  rating        Float
+  communication Float?
+  quality       Float?
+  delivery      Float?
+  comment       String?
+  createdAt     DateTime @default(now())
+
+  order    Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  reviewer User    @relation("ReviewsGiven", fields: [reviewerId], references: [id])
+  reviewee User    @relation("ReviewsReceived", fields: [revieweeId], references: [id])
+
+  @@unique([orderId, reviewerId])
+  @@index([revieweeId])
+  @@index([orderId])
+  @@map("reviews")
+}
+
+// 10. Message
+model Message {
+  id            String      @id @default(cuid())
+  conversationId String
+  senderId      String
+  receiverId    String
+  content       String
+  type          MessageType @default(TEXT)
+  isRead        Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+
+  sender   User @relation("SentMessages", fields: [senderId], references: [id])
+  receiver User @relation("ReceivedMessages", fields: [receiverId], references: [id])
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([receiverId])
+  @@map("messages")
+}
+
+// 11. Notification
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  type      NotificationType @default(SYSTEM)
+  link      String?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@map("notifications")
+}
+
+// 12. Wallet
+model Wallet {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  balance          Float    @default(0)
+  pendingBalance   Float    @default(0)
+  totalEarnings    Float    @default(0)
+  totalWithdrawn   Float    @default(0)
+  bankName         String?
+  bankAccount      String?
+  jazzcashNumber   String?
+  easypaisaNumber  String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([userId])
+  @@map("wallets")
+}
+
+// 13. Transaction
+model Transaction {
+  id          String           @id @default(cuid())
+  walletId    String
+  orderId     String?
+  type        TransactionType  @default(CREDIT)
+  amount      Float
+  fee         Float            @default(0)
+  method      String?
+  status      TransactionStatus @default(COMPLETED)
+  description String?
+  createdAt   DateTime         @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  order  Order? @relation(fields: [orderId], references: [id])
+
+  @@index([walletId])
+  @@index([orderId])
+  @@map("transactions")
+}
+
+// 14. Portfolio
+model Portfolio {
+  id         String   @id @default(cuid())
+  userId     String
+  title      String
+  description String?
+  imageUrl   String?
+  projectUrl String?
+  tags       String?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("portfolios")
+}
+
+// 15. Course
+model Course {
+  id               String       @id @default(cuid())
+  title            String
+  slug             String       @unique
+  description      String
+  instructorId     String
+  thumbnail        String?
+  level            CourseLevel  @default(BEGINNER)
+  duration         String?
+  isFree           Boolean      @default(true)
+  price            Float        @default(0)
+  rating           Float        @default(0)
+  totalEnrollments Int          @default(0)
+  totalLessons     Int          @default(0)
+  categoryId       String?
+  tags             String?
+  status           CourseStatus @default(DRAFT)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  instructor  User        @relation(fields: [instructorId], references: [id])
+  category    Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  lessons     Lesson[]
+  enrollments Enrollment[]
+
+  @@index([instructorId])
+  @@index([status])
+  @@index([slug])
+  @@index([categoryId])
+  @@map("courses")
+}
+
+// 16. Lesson
+model Lesson {
+  id          String     @id @default(cuid())
+  courseId    String
+  title       String
+  description String?
+  videoUrl    String?
+  content     String?
+  duration    Int?
+  order       Int        @default(0)
+  isFree      Boolean    @default(false)
+  type        LessonType @default(VIDEO)
+  createdAt   DateTime   @default(now())
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([courseId])
+  @@map("lessons")
+}
+
+// 17. Enrollment
+model Enrollment {
+  id               String           @id @default(cuid())
+  userId           String
+  courseId         String
+  progress         Float            @default(0)
+  completedLessons String?
+  status           EnrollmentStatus @default(ACTIVE)
+  enrolledAt       DateTime         @default(now())
+  completedAt      DateTime?
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@index([userId])
+  @@index([courseId])
+  @@map("enrollments")
+}
+
+// 18. Team
+model Team {
+  id        String   @id @default(cuid())
+  name      String
+  description String?
+  ownerId   String
+  avatar    String?
+  inviteLink String?  @unique
+  isActive  Boolean   @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner  User         @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members TeamMember[]
+
+  @@index([ownerId])
+  @@map("teams")
+}
+
+// 19. TeamMember
+model TeamMember {
+  id       String   @id @default(cuid())
+  teamId   String
+  userId   String
+  role     TeamRole @default(MEMBER)
+  joinedAt DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
+  @@map("team_members")
+}
+
+// 20. Dispute
+model Dispute {
+  id          String        @id @default(cuid())
+  orderId     String
+  raisedBy    String
+  reason      String
+  description String
+  status      DisputeStatus @default(OPEN)
+  resolution  String?
+  resolvedBy  String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  order   Order @relation(fields: [orderId], references: [id])
+  raiser  User  @relation(fields: [raisedBy], references: [id])
+
+  @@index([orderId])
+  @@index([raisedBy])
+  @@index([status])
+  @@map("disputes")
+}
