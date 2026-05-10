@@ -26,15 +26,15 @@ export function CTA({ onSignupClick }: CtaProps) {
           className="mx-auto max-w-2xl text-center"
         >
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Shuru Karein?
+            Ready to Get Started?
           </h2>
           <p className="mt-4 text-lg text-muted-foreground">
-            Aaj hi join karein Pakistan ka sabse bada freelance marketplace. Free
-            account banao aur apni skills ko duniya ke saamne laao.
+            Join Pakistan's largest freelance marketplace today. Create a free
+            account and showcase your skills to the world.
           </p>
           <div className="mt-8">
             <Button size="lg" className="gap-2 px-8" onClick={onSignupClick}>
-              Free Account Banao
+              Create Free Account
               <ArrowRight className="h-4 w-4" />
             </Button>
           </div>

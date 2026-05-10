@@ -66,7 +66,7 @@ export function Categories() {
             Popular Categories
           </h2>
           <p className="mt-3 text-lg text-muted-foreground">
-            Har skill ke liye opportunities — apna category choose karein
+            Opportunities for every skill — choose your category
           </p>
         </motion.div>
 

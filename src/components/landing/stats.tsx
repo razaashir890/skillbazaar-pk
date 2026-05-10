@@ -18,7 +18,7 @@ const stats = [
   },
   {
     value: '5-8%',
-    label: 'vs 20% International Platforms',
+    label: 'Platform Fee vs 20% International Platforms',
   },
 ]
 

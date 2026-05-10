@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SkillBazaar PK — Har Hunar, Har Jagah Becho",
+  title: "SkillBazaar PK — Every Skill, Sold Everywhere",
   description:
-    "Pakistan's First Freelance Marketplace Built for Local Talent. Connect with businesses, showcase your skills, and earn with local payments.",
+    "Pakistan's First Freelance Marketplace Built for Local Talent",
   keywords: [
     "SkillBazaar",
     "Pakistan",
@@ -27,11 +27,11 @@ export const metadata: Metadata = {
     "JazzCash",
     "EasyPaisa",
     "gigs",
-    "hunar",
+    "PKR",
   ],
   authors: [{ name: "SkillBazaar PK Team" }],
   openGraph: {
-    title: "SkillBazaar PK — Har Hunar, Har Jagah Becho",
+    title: "SkillBazaar PK — Every Skill, Sold Everywhere",
     description:
       "Pakistan's First Freelance Marketplace Built for Local Talent.",
     url: "https://skillbazaar.pk",
@@ -41,7 +41,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "SkillBazaar PK — Har Hunar, Har Jagah Becho",
+    title: "SkillBazaar PK — Every Skill, Sold Everywhere",
     description:
       "Pakistan's First Freelance Marketplace Built for Local Talent.",
   },

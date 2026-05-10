@@ -16,42 +16,42 @@ const features = [
     icon: BrainCircuit,
     title: 'AI Profile Builder',
     description:
-      'AI se apna professional profile auto-generate karein',
+      'Auto-generate your professional profile using AI in seconds',
     color: 'emerald',
   },
   {
     icon: Smartphone,
     title: 'Local Payments',
     description:
-      'JazzCash, EasyPaisa, Bank Transfer — sab local payment methods supported',
+      'JazzCash, EasyPaisa, Bank Transfer — all local payment methods supported',
     color: 'amber',
   },
   {
     icon: MapPin,
     title: 'Local Marketplace',
     description:
-      'Pakistan ke har shehar se clients aur freelancers',
+      'Clients and freelancers from every city in Pakistan',
     color: 'emerald',
   },
   {
     icon: Globe,
     title: 'Global Reach',
     description:
-      'Fiverr aur Upwork jaisi global reach, Pakistani andaaz mein',
+      'Global reach like Fiverr and Upwork, with a Pakistani touch',
     color: 'amber',
   },
   {
     icon: GraduationCap,
     title: 'Skill Academy',
     description:
-      'Free courses aur certifications se apni skills enhance karein',
+      'Enhance your skills with free courses and certifications',
     color: 'emerald',
   },
   {
     icon: Users,
     title: 'Team Builder',
     description:
-      'Multiple freelancers ko team banao, bade projects handle karein',
+      'Form teams with multiple freelancers to handle bigger projects',
     color: 'amber',
   },
 ]
@@ -87,10 +87,10 @@ export function Features() {
           className="text-center"
         >
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Kya Khaas Hai?
+            What Makes Us Special
           </h2>
           <p className="mt-3 text-lg text-muted-foreground">
-            SkillBazaar PK ka har feature Pakistani freelancers ke liye designed hai
+            Every feature on SkillBazaar PK is designed for Pakistani freelancers
           </p>
         </motion.div>
 

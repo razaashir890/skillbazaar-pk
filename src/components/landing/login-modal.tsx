@@ -65,7 +65,7 @@ export function LoginModal({ open, onOpenChange, onSwitchToSignup }: LoginModalP
         <DialogHeader>
           <DialogTitle className="text-2xl">Login to SkillBazaar PK</DialogTitle>
           <DialogDescription>
-            Apne account mein login karein aur shuru karein
+            Log in to your account and get started
           </DialogDescription>
         </DialogHeader>
 

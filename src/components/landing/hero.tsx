@@ -41,11 +41,11 @@ export function Hero({ onSignupClick }: HeroProps) {
               className="w-fit gap-1.5 border-emerald-200 bg-emerald-100 px-3 py-1.5 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
             >
               <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
-              Pakistan ka #1 Freelance Platform
+              Pakistan's #1 Freelance Platform
             </Badge>
 
             <h1 className="text-4xl font-bold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
-              Pakistan ka Apna{' '}
+              Pakistan's Own{' '}
               <span className="text-emerald-600 dark:text-emerald-400">
                 Freelance
               </span>{' '}
@@ -53,23 +53,21 @@ export function Hero({ onSignupClick }: HeroProps) {
             </h1>
 
             <p className="text-xl text-muted-foreground">
-              Har hunar, har jagah becho — apne andaaz mein
+              Every skill, sold everywhere — in your own style
             </p>
 
             <p className="max-w-lg text-sm leading-relaxed text-muted-foreground">
-              Pakistani talent ko local businesses se connect karein. JazzCash,
-              EasyPaisa, aur bank transfer ke saath payments receive karein.
-              Fiverr aur Upwork jaisi global reach, Pakistani andaaz mein.
+              Connect with Pakistani freelancers and businesses worldwide. With over 2M+ freelancers, Pakistan is the 4th largest freelance market globally. Receive payments through JazzCash, EasyPaisa, and bank transfer — all in Pakistani Rupee.
             </p>
 
             <div className="flex flex-wrap gap-3 pt-2">
               <Button size="lg" className="gap-2" onClick={onSignupClick}>
                 <Rocket className="h-4 w-4" />
-                Freelancer Bano
+                Become a Freelancer
               </Button>
               <Button size="lg" variant="outline" className="gap-2">
                 <Building2 className="h-4 w-4" />
-                Client Bano
+                Become a Client
               </Button>
             </div>
 

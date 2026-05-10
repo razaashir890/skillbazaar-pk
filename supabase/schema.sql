@@ -562,8 +562,7 @@ ALTER TABLE "disputes" ENABLE ROW LEVEL SECURITY;
 -- Anyone can see basic public user info (id, role, avatar, isOnline)
 CREATE POLICY "anon_select_public_users" ON "users"
     FOR SELECT TO anon, authenticated
-    USING (true)
-    WITH CHECK (true);
+    USING (true);
 
 -- Users can insert their own record (handled by signup, typically via service role)
 CREATE POLICY "authenticated_insert_own_user" ON "users"

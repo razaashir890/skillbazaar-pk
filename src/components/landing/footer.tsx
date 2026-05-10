@@ -40,11 +40,11 @@ export function Footer() {
               </span>
             </a>
             <p className="mt-3 text-sm font-medium text-muted-foreground">
-              Har Hunar, Har Jagah Becho
+              Every Skill, Sold Everywhere
             </p>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              Pakistan ka apna freelance marketplace jahan har talent ko opportunities
-              milti hain. Local payments, global reach.
+              Pakistan's first freelance marketplace connecting local talent with
+              businesses worldwide. Local payments, global reach.
             </p>
           </div>
 

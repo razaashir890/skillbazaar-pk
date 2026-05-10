@@ -9,23 +9,23 @@ const steps = [
   {
     number: '01',
     icon: Sparkles,
-    title: 'Profile Banao',
+    title: 'Create Your Profile',
     description:
-      'Apni skills aur portfolio ke saath professional profile banao',
+      'Build a professional profile with your skills and portfolio',
   },
   {
     number: '02',
     icon: Rocket,
-    title: 'Gig Lagao',
+    title: 'Post Your Gig',
     description:
-      'Apni services ko gigs ki shakal mein list karein aur clients attract karein',
+      'List your services as gigs and attract clients',
   },
   {
     number: '03',
     icon: Wallet,
-    title: 'Paise Kamao',
+    title: 'Start Earning',
     description:
-      'Orders complete karein, payments JazzCash/EasyPaisa mein receive karein',
+      'Complete orders and receive payments via JazzCash/EasyPaisa',
   },
 ]
 
@@ -60,10 +60,10 @@ export function HowItWorks() {
           className="text-center"
         >
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Kaise Kaam Karta Hai?
+            How It Works
           </h2>
           <p className="mt-3 text-lg text-muted-foreground">
-            Sirf 3 simple steps mein shuru karein
+            Get started in just 3 simple steps
           </p>
         </motion.div>
 

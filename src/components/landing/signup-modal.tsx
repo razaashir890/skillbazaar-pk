@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff, Sparkles, Loader2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Separator } from '@/components/ui/separator'
+import { Badge } from '@/components/ui/badge'
 
 const signupSchema = z.object({
   role: z.enum(['freelancer', 'client', 'both']),
@@ -41,6 +42,14 @@ interface SignupModalProps {
   onSwitchToLogin: () => void
 }
 
+interface GeneratedProfile {
+  headline: string
+  bio: string
+  skills: string[]
+  hourlyRate: number
+  tagline: string
+}
+
 export function SignupModal({
   open,
   onOpenChange,
@@ -48,6 +57,10 @@ export function SignupModal({
 }: SignupModalProps) {
   const [showPassword, setShowPassword] = useState(false)
   const [selectedRole, setSelectedRole] = useState<'freelancer' | 'client' | 'both'>('freelancer')
+  const [skillsInput, setSkillsInput] = useState('')
+  const [generatingProfile, setGeneratingProfile] = useState(false)
+  const [generatedProfile, setGeneratedProfile] = useState<GeneratedProfile | null>(null)
+  const [profileError, setProfileError] = useState('')
 
   const form = useForm<SignupFormData>({
     resolver: zodResolver(signupSchema),
@@ -64,20 +77,52 @@ export function SignupModal({
     console.log('Signup:', data)
   }
 
+  const handleGenerateProfile = async () => {
+    const name = form.getValues('fullName')
+    if (!name.trim()) {
+      setProfileError('Please enter your name first')
+      return
+    }
+    if (!skillsInput.trim()) {
+      setProfileError('Please enter your skills first')
+      return
+    }
+    setProfileError('')
+    setGeneratingProfile(true)
+    setGeneratedProfile(null)
+    try {
+      const res = await fetch('/api/ai-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, skills: skillsInput, role: selectedRole }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setProfileError(data.error || 'Failed to generate profile')
+        return
+      }
+      setGeneratedProfile(data.profile)
+    } catch {
+      setProfileError('Something went wrong. Please try again.')
+    } finally {
+      setGeneratingProfile(false)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-2xl">Join SkillBazaar PK</DialogTitle>
           <DialogDescription>
-            Free account banao aur apna freelance journey shuru karein
+            Create a free account and start your freelance journey
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           {/* Role Selection */}
           <div className="space-y-3">
-            <Label>Main kaun hoon?</Label>
+            <Label>I am a...</Label>
             <RadioGroup
               value={selectedRole}
               onValueChange={(value) => {
@@ -128,7 +173,7 @@ export function SignupModal({
             <Label htmlFor="signup-name">Full Name</Label>
             <Input
               id="signup-name"
-              placeholder="Apna poora naam likhein"
+              placeholder="Enter your full name"
               {...form.register('fullName')}
             />
             {form.formState.errors.fullName && (
@@ -140,7 +185,7 @@ export function SignupModal({
 
           {/* Email */}
           <div className="space-y-2">
-            <Label htmlFor="signup-email">Email</Label>
+            <Label htmlFor="signup-email">Email Address</Label>
             <Input
               id="signup-email"
               type="email"
@@ -156,7 +201,7 @@ export function SignupModal({
 
           {/* Phone */}
           <div className="space-y-2">
-            <Label htmlFor="signup-phone">Phone</Label>
+            <Label htmlFor="signup-phone">Phone Number</Label>
             <Input
               id="signup-phone"
               type="tel"
@@ -170,6 +215,62 @@ export function SignupModal({
             )}
           </div>
 
+          {/* Skills for AI Profile Generation (only for freelancers) */}
+          {(selectedRole === 'freelancer' || selectedRole === 'both') && (
+            <div className="space-y-2">
+              <Label htmlFor="signup-skills">Your Skills</Label>
+              <Input
+                id="signup-skills"
+                type="text"
+                placeholder="e.g. WordPress, Graphic Design, SEO"
+                value={skillsInput}
+                onChange={(e) => setSkillsInput(e.target.value)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full gap-2 border-emerald-300 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                onClick={handleGenerateProfile}
+                disabled={generatingProfile}
+              >
+                {generatingProfile ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                {generatingProfile ? 'Generating...' : 'Generate AI Profile'}
+              </Button>
+              {profileError && (
+                <p className="text-sm text-destructive">{profileError}</p>
+              )}
+              {generatedProfile && (
+                <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 dark:border-emerald-800 dark:bg-emerald-950/50">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Sparkles className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                    <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                      AI-Generated Profile Preview
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium">{generatedProfile.headline}</p>
+                  <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                    {generatedProfile.bio}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {generatedProfile.skills.map((skill) => (
+                      <Badge key={skill} variant="secondary" className="text-xs">
+                        {skill}
+                      </Badge>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                    Suggested Rate: PKR {generatedProfile.hourlyRate?.toLocaleString()}/hr
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Password */}
           <div className="space-y-2">
             <Label htmlFor="signup-password">Password</Label>
@@ -177,7 +278,7 @@ export function SignupModal({
               <Input
                 id="signup-password"
                 type={showPassword ? 'text' : 'password'}
-                placeholder="Kam az kam 8 characters"
+                placeholder="Minimum 8 characters"
                 className="pr-10"
                 {...form.register('password')}
               />
@@ -232,7 +333,7 @@ export function SignupModal({
               fill="#EA4335"
             />
           </svg>
-          Sign in with Google
+          Sign up with Google
         </Button>
 
         <p className="mt-4 text-center text-sm text-muted-foreground">
